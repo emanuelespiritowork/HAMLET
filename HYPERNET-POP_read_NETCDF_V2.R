@@ -44,7 +44,7 @@ bands_HYP <- read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HY
 
 ##### 1.2) Parameter of selection:  start and end date ####
 date_start = "2025-05-01"
-date_end = "2025-06-10"
+date_end = "2025-05-10"
 
 # creation of folder list
 folder_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE)) %>%
