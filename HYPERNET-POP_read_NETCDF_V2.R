@@ -74,17 +74,21 @@ res <- lapply(1:nrow(folder_list), function(row_n){
     hyp_vaa <-ncvar_get(ncin, "viewing_azimuth_angle")
     hyp_paa   <-ncvar_get(ncin, "pointing_azimuth_angle")
     hyp_vza  <-ncvar_get(ncin, "viewing_zenith_angle")
+    hyp_sza <- ncvar_get(ncin, "solar_zenith_angle")
+    hyp_saa <- ncvar_get(ncin, "solar_azimuth_angle")
     
     complete_DB <- data.table::data.table(date = date,
                               time = time,
                               VZA = hyp_vza,
                               VAA = hyp_vaa,
-                              PAA = hyp_paa) %>%
+                              PAA = hyp_paa,
+                              SZA = hyp_sza,
+                              SAA = hyp_saa) %>%
         bind_cols(., hyp_ref %>% 
                       data.table::data.table() %>% 
                       `names<-`(paste0("B", 1:1554)) %>%
                       mutate(across(everything(), ~ as.integer(.x*10000)))) %>%
-        mutate(across(c(VZA, VAA, PAA), ~round(.x)))
+        mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
     
     
     return(complete_DB)
@@ -109,7 +113,7 @@ res2int_long <- tidyr::pivot_longer(res_smoothed, cols = starts_with("B"),
                           values_to = "Ref",
                           values_drop_na = TRUE) 
 res2int_long <-left_join ( res2int_long,bands_HYP) %>%
-  group_by(date, VZA, VAA, PAA, bands, wvl) %>%
+  group_by(date, VZA, VAA, PAA, SZA, SAA, bands, wvl) %>%
   summarise(Ref = mean(Ref)) %>% ungroup()
 
 
