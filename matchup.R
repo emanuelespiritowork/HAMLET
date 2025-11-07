@@ -3,7 +3,8 @@
 get_hypstar_data <- function(home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/processed",
                              date_start,
                              date_end,
-                             pivoted = T,
+                             output_pivoted = T, #output to be pivoted (true) or not (false)
+                             unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
                              bands_HYP = read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HYP.csv")){
   library(tidytable)
   
@@ -54,13 +55,27 @@ get_hypstar_data <- function(home_path = "//10.0.1.243/projects/2023_HyperNet-PO
   }) %>% bind_rows() %>%
     filter(B1000 < 6000 ) # max value @ 836 nm
   
-  if(pivoted){
-    res2_long <- tidyr::pivot_longer(res, cols = starts_with("B"),
-                                     names_to = "bands",
-                                     values_to = "Ref",
-                                     values_drop_na = TRUE) 
-    res2_long <-left_join (res2_long,bands_HYP)
-    res <- res2_long 
+  res2_long <- tidyr::pivot_longer(res, cols = starts_with("B"),
+                                   names_to = "bands",
+                                   values_to = "Ref",
+                                   values_drop_na = TRUE) 
+  res2_long <-left_join (res2_long,bands_HYP)
+  res <- res2_long 
+  
+  #remove PAA
+  
+  res <- res  %>% select(-PAA)
+  
+  if(!output_pivoted){
+    if(unpivoted_with_bands){
+      not_pivoted <- res %>% select(-wvl) %>%
+        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
+    }else{
+      not_pivoted <- res %>% select(-bands) %>%
+        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
+    }
+    
+    return(not_pivoted)
   }
   
   return(res)
@@ -70,7 +85,7 @@ get_hypstar_data <- function(home_path = "//10.0.1.243/projects/2023_HyperNet-PO
 
 #use res variable to make matchup with satellite image
 
-hypstar_select_measures_and_mean <- function(dataset_res, #dataset pivoted of (date,time,VZA,VAA,PAA,B*) #res2_long oppure res
+hypstar_angle_filter_and_mean <- function(dataset_res, #dataset pivoted of (date,time,VZA,VAA,PAA,B*) #res2_long oppure res
                             minVZA = min(unique(dataset_res$VZA)), #minimum View Zenith Angle
                             maxVZA = max(unique(dataset_res$VZA)), #maximum View Zenith Angle
                             minVAA = min(unique(dataset_res$VAA)), #minimum View Azimuth Angle
@@ -107,7 +122,7 @@ hypstar_select_measures_and_mean <- function(dataset_res, #dataset pivoted of (d
     filter(!(VAA %in% delVAA)) %>%
     filter(!(SZA %in% delSZA)) %>%
     filter(!(SAA %in% delSAA)) %>%
-    mutate(VZA_VAA_SZA_SAA = paste("(",VZA,";",VAA,";",SZA,";",SAA,")",sep="")) 
+    mutate(VZA_VAA_SZA_SAA = paste("(",VZA,":",VAA,":",SZA,":",SAA,")",sep="")) 
   
   VZA_VAA_SZA_SAA_used <- unique(filtered_res$VZA_VAA_SZA_SAA)
   
@@ -115,7 +130,7 @@ hypstar_select_measures_and_mean <- function(dataset_res, #dataset pivoted of (d
     group_by(date,time,bands) %>%
     mutate(Ref_mean = mean(Ref)) %>%
     ungroup() %>%
-    select(-Ref,-VZA,-VAA,-PAA,-SZA,-SAA,-VZA_VAA_SZA_SAA) %>%
+    select(-Ref,-VZA,-VAA,-SZA,-SAA,-VZA_VAA_SZA_SAA) %>%
     rename(Ref = Ref_mean) %>%
     unique() %>%
     mutate(VZA_VAA_SZA_SAA_used = paste(VZA_VAA_SZA_SAA_used, collapse = ","))
@@ -136,11 +151,50 @@ hypstar_select_measures_and_mean <- function(dataset_res, #dataset pivoted of (d
   
 }
 
+hypstar_spectral_resampling <- function(dataset_res,
+                                        S2_sensor,#can be S2A,S2B,S2C
+                                        input_pivoted = T, #dataset_res is pivoted (true) or not (false) 
+                                        output_pivoted = T, #output to be pivoted (true) or not (false)
+                                        unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
+                                        bands_HYP = read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HYP.csv")){
+  if(!input_pivoted){
+    res2_long <- tidyr::pivot_longer(dataset_res, cols = starts_with("B"),
+                                     names_to = "bands",
+                                     values_to = "Ref",
+                                     values_drop_na = TRUE) 
+    res2_long <-left_join (res2_long,bands_HYP)
+    dataset_res <- res2_long  
+  }
+  
+  #hypstar spectral resampling to S2
+  
+  
+  
+  
+  
+  
+  
+  
+  if(!output_pivoted){
+    if(unpivoted_with_bands){
+      not_pivoted <- matchup_selection_res %>% select(-wvl) %>%
+        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
+    }else{
+      not_pivoted <- matchup_selection_res %>% select(-bands) %>%
+        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
+    }
+    
+    return(not_pivoted)
+  }
+}
+
 get_s2_data <- function(hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                         repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/", #masked S2 data
                         date_start, 
                         date_end,
-                        output_pivoted = T){
+                        output_pivoted = T, #output to be pivoted (true) or not (false)
+                        unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
+                        bands_S2 = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/s2_bands.csv")){
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
@@ -193,6 +247,9 @@ get_s2_data <- function(hypstar_point_path = "//10.0.1.243/projects/2023_HyperNe
   
   get_statistics_dataset <- function(product_path){
     library(tidytable)
+    
+    sensor_ID <- substring(basename(product_path),24,26)
+    
     list_of_tifs <- list.files(product_path, full.names = T, recursive = T,
                                pattern = "\\.tif$")
     
@@ -209,6 +266,7 @@ get_s2_data <- function(hypstar_point_path = "//10.0.1.243/projects/2023_HyperNe
       mutate(date = as.Date(substring(basename(product_path),8,15),"%Y%m%d")) %>%
       mutate(time = substring(basename(product_path),16,22)) %>% 
       pivot_wider(names_from = bands, values_from = Ref) %>%
+      mutate(sensor = sensor_ID) %>%
       data.table::as.data.table()
     
     #statistics_dataset$bands <- extract_names
@@ -222,19 +280,155 @@ get_s2_data <- function(hypstar_point_path = "//10.0.1.243/projects/2023_HyperNe
   
   all_datasets <- lapply(product_paths,get_statistics_dataset)
   
-  output <- dplyr::bind_rows(all_datasets)   
+  res <- dplyr::bind_rows(all_datasets) %>%
+    na.omit()
   
-  if(output_pivoted){
-    output <- output %>% tidyr::pivot_longer(cols = starts_with("B"),
-                                             names_to = "bands",
-                                             values_to = "Ref") 
+  res2_long <- tidyr::pivot_longer(res, cols = starts_with("B"),
+                                   names_to = "bands",
+                                   values_to = "Ref",
+                                   values_drop_na = TRUE) 
+  res2_long <-left_join (res2_long,bands_S2)
+  
+  res <- res2_long
+  
+  if(!output_pivoted){
+    if(unpivoted_with_bands){
+      not_pivoted <- res %>% select(-wvl) %>%
+        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
+    }else{
+      not_pivoted <- res %>% select(-bands) %>%
+        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
+    }
+    
+    return(not_pivoted)
   }
 
-  return(output)
+  return(res)
+}
+
+s2_angle_filter <- function(dataset_res, #dataset pivoted of (date,time,VZA,VAA,PAA,B*) #res2_long oppure res
+                               minVZA = min(unique(dataset_res$VZA)), #minimum View Zenith Angle
+                               maxVZA = max(unique(dataset_res$VZA)), #maximum View Zenith Angle
+                               minVAA = min(unique(dataset_res$VAA)), #minimum View Azimuth Angle
+                               maxVAA = max(unique(dataset_res$VAA)), #maximum View Azimuth Angle
+                               minSZA = min(unique(dataset_res$SZA)), #minimum Solar Zenith Angle
+                               maxSZA = max(unique(dataset_res$SZA)), #maximum Solar Zenith Angle
+                               minSAA = min(unique(dataset_res$SAA)), #minimum Solar Azimuth Angle
+                               maxSAA = max(unique(dataset_res$SAA)), #maximum Solar Azimuth Angle
+                               input_pivoted = T, #dataset_res is pivoted (true) or not (false) 
+                               output_pivoted = T, #output to be pivoted (true) or not (false)
+                               unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
+                               bands_S2 = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/s2_bands.csv") #path bands_S2
+                               ){
+  if(!input_pivoted){
+    res2_long <- tidyr::pivot_longer(dataset_res, cols = starts_with("B"),
+                                     names_to = "bands",
+                                     values_to = "Ref",
+                                     values_drop_na = TRUE) 
+    res2_long <-left_join(res2_long,bands_S2)
+    dataset_res <- res2_long  
+  }
+  
+  filtered_res <- dataset_res %>% filter(VZA >= minVZA & VZA <= maxVZA) %>%
+    filter(VAA >= minVAA & VAA <= maxVAA) %>%
+    filter(SZA >= minSZA & SZA <= maxSZA) %>%
+    filter(SAA >= minSAA & SAA <= maxSAA) #%>%
+    #filter(!(VZA %in% delVZA)) %>%
+    #filter(!(VAA %in% delVAA)) %>%
+    #filter(!(SZA %in% delSZA)) %>%
+    #filter(!(SAA %in% delSAA)) %>%
+    #mutate(VZA_VAA_SZA_SAA = paste("(",VZA,":",VAA,":",SZA,":",SAA,")",sep="")) 
+  if(!output_pivoted){
+    if(unpivoted_with_bands){
+      not_pivoted <- filtered_res %>% select(-wvl) %>%
+        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
+    }else{
+      not_pivoted <- filtered_res %>% select(-bands) %>%
+        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
+    }
+    
+    return(not_pivoted)
+  }
+  
+  return(filtered_res)
 }
 
 
-#s2_select_measures_and_mean <- function()
+matchup_function <- function(s2_data, 
+                             hypstar_data,
+                             just_closest_time = T,#closest time (true) or all times in a hour range (false)
+                             hour_range = NULL,#if just_closest_time = F, here we need a range of hours
+                             input_pivoted = T, #dataset_res is pivoted (true) or not (false) 
+                             output_pivoted = T, #output to be pivoted (true) or not (false)
+                             unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
+                             bands_HYP = read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HYP.csv"),
+                             bands_S2 = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/s2_bands.csv")
+                             ){
+  if(!input_pivoted){
+    res2_long <- tidyr::pivot_longer(s2_data, cols = starts_with("B"),
+                                     names_to = "bands",
+                                     values_to = "Ref",
+                                     values_drop_na = TRUE) 
+    res2_long <-left_join(res2_long,bands_S2)
+    s2_data <- res2_long  
+    
+    res2_long <- tidyr::pivot_longer(hypstar_data, cols = starts_with("B"),
+                                     names_to = "bands",
+                                     values_to = "Ref",
+                                     values_drop_na = TRUE) 
+    res2_long <-left_join(res2_long,bands_HYP)
+    hypstar_data <- res2_long 
+  }
+  
+  #check spectral resampling of hypstar
+  hypstar_bands_number <- length(unique(hypstar_data$bands))
+  if(hypstar_bands_number > 10){
+    print("mancato ricampionamento, viene eseguito")
+    hypstar_resampled <- hypstar_spectral_resampling(hypstar_data,
+                                                     input_pivoted = T)
+  }else{
+    hypstar_resampled <- hypstar_data
+  }
+  
+  #change col names not to confuse S2 B# and hypstar B#
+  s2_col_renamed <- s2_data %>% rename_with(~paste0(.,"_s2"),-c(bands,date)) 
+  
+  hypstar_col_renamed <- hypstar_resampled %>% rename_with(~paste0(.,"_hyp"),-c(bands,date))
+  
+    
+  library(tidytable)
+  
+  #data che coincide
+  s2_dates <- unique(s2_col_renamed$date)
+  
+  hypstar_date_filtered <- hypstar_data %>% filter(date %in% s2_dates)
+  
+  #orario più vicino OPPURE media dei valori in una forchetta attorno ad S2
+  if(just_closest_time){
+    merge_by_date_and_bands <- s2_col_renamed %>% left_join(hypstar_date_filtered, by = c(bands,date)) %>%
+      mutate(time_diff = time_s2-time_hyp) %>%
+      group_by(date,bands) %>%
+      mutate(great_time_diff = max(time_diff)) %>%
+      ungroup() %>%
+      filter(time_diff == great_time_diff) %>%
+      select(-time_diff,-great_time_diff)
+  }else{
+    #weight the Ref with time_diff
+  }
+  
+  if(!output_pivoted){
+    if(unpivoted_with_bands){
+      not_pivoted <- filtered_res %>% select(-wvl) %>%
+        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
+    }else{
+      not_pivoted <- filtered_res %>% select(-bands) %>%
+        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
+    }
+    
+    return(not_pivoted)
+  }
+}
+
 
 
 
