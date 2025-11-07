@@ -136,141 +136,103 @@ hypstar_select_measures_and_mean <- function(dataset_res, #dataset pivoted of (d
   
 }
 
-get_s2_data <- function(input_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ",
-                        input_polygon,
-                        output_file,
-                        start_date,
-                        end_date){
-  terra::terraOptions(progress=0)
+get_s2_data <- function(hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
+                        repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/", #masked S2 data
+                        date_start, 
+                        date_end,
+                        output_pivoted = T){
+  library(tidytable)
+  year_start <- lubridate::year(as.Date(date_start))
+  year_end <- lubridate::year(as.Date(date_end))
+  years <- as.character(year_start:year_end)
+  repo_year_path <- paste0(repo_root_path, years, "/")
   
-  # set arguments
-  sp_res <- 20
-  progress <- TRUE
-  
-  if(!(sp_res %in% c(10,20))){
-    stop("Analysis spatial resolution should be one of the followings: '10', '20'.")
+  #now you enter in the folder where there are products
+  get_products_paths <- function(year_path){
+    list_of_products <- list.files(year_path, full.names = T)
+    list_of_dates <- as.Date(substring(basename(list_of_products),8,15),"%Y%m%d")
+    return(list_of_products[list_of_dates > date_start & list_of_dates < date_end])
   }
   
-  ptm <- proc.time()
-  message(paste(c("Query started at: "), Sys.time(), sep=""))
+  product_paths <- unlist(lapply(repo_year_path, get_products_paths))
   
-  # list imagery in input folder
-  f_list_full <- sort(list.files(path=input_path, pattern = "0m.vrt", recursive=TRUE, full.names = TRUE))
+  hypstar_point <- sf::st_read(hypstar_point_path)
   
-  # subset based on date
-  f_list_full_date <- substr(basename(f_list_full), start = 8, stop = 15)
-  start_fdate <- strftime(as.Date(start_date, origin="1970-01-01", tz="GMT"), format = "%Y%m%d", tz = "GMT", usetz = FALSE)
-  end_fdate <- strftime(as.Date(end_date, origin="1970-01-01", tz="GMT"), format = "%Y%m%d", tz = "GMT", usetz = FALSE)
-  f_list <- f_list_full[which(f_list_full_date >= start_fdate & f_list_full_date <= end_fdate)]
-  # acq_date_list <- f_list_full_date[which(f_list_full_date >= start_fdate & f_list_full_date <= end_fdate)]
-  
-  # define reference EPSG
-  r <- terra::rast(f_list[1])
-  ref_epsg <- as.integer(terra::crs(r, describe=TRUE)$code)
-  
-  # import polygons
-  p_in <- sf::st_read(input_polygon, stringsAsFactors = FALSE, quiet = TRUE)
-  p_in$pid <- as.integer(1:nrow(p_in))
-  
-  # reproject polygons to target raster incidence angle
-  if(ref_epsg != sf::st_crs(p_in)$epsg){
-    p_in <- sf::st_transform(p_in, ref_epsg)
-  }
-  
-  # clean workspace
-  suppressWarnings(rm(list=c("f_list_full","f_list_full_date","start_fdate","end_fdate","ref_epsg","start_date","end_date","input_path","input_polygon")))
-  invisible(gc())
-  
-  # define reference raster
-  if(terra::res(r)[1] != sp_res){
-    r_void <- terra::rast(extent=terra::ext(r), resolution=sp_res, crs=terra::crs(r))
-  } else {
-    r_void <- terra::rast(extent=terra::ext(r), resolution=terra::res(r)[1], crs=terra::crs(r))
-  }
-  # rasterize polygons
-  p_boundary <- terra::vect(sf::st_cast(p_in, "MULTILINESTRING"))
-  pl <- terra::rasterize(p_boundary, r_void, field=0, background=1, touches=TRUE)
-  # pc <- terra::rasterize(p_in, r, field="pid", fun="count")
-  r_cover <- terra::rasterize(p_in, r_void, cover=TRUE)
-  r_cover <- ceiling(r_cover * pl)
-  suppressWarnings(rm(list=c("pl","p_boundary")))
-  invisible(gc())
-  # p <- terra::rasterize(p_in, r_void, field="pid")
-  p <- terra::rasterize(p_in, r_void, field="pid")
-  p <- terra::ifel(r_cover == 1, p, NA)
-  suppressWarnings(rm(list=c("r_cover","p_in")))
-  invisible(gc())
-  if(terra::res(p)[1] != terra::res(r)[1]){
-    p <- terra::resample(p, r, method="near")
-  }
-  suppressWarnings(rm(list=c("r","r_void","sp_res")))
-  invisible(gc())
-  if(!(terra::inMemory(p))){
-    p <- terra::toMemory(p)
-  }
-  
-  # setup cycle
-  ll <- length(f_list)
-  out_df <- data.frame("pid"=integer(), "date"=character(), "epoch"=integer(), "B2"=double(), "B3"=double(), "B4"=double(), "B5"=double(), "B6"=double(), "B7"=double(), "B8"=double(), "B8A"=double(), "B11"=double(), "B12"=double())
-  write.table(out_df, file=output_file, sep=";", dec=".", row.names=FALSE, col.names=TRUE, na="", quote=FALSE)
-  invisible(gc())
-  
-  # initialize progress bar
-  if(progress){
-    pb <- utils::txtProgressBar(style=3)
-  }
-  
-  # cycle on input files
-  for(f in 1:ll){
-    r <- terra::rast(f_list[f])
+  get_four_closest_pixels_statistic <- function(band){
+    #print(band)
+    #create a raster with a buffer of 10 m around the hypstar point
+    hypstar_point_buffer <- sf::st_buffer(hypstar_point,dist = 10)#10 is for 4 closest pixels
+    #sf::st_write(hypstar_point_buffer,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/hypstar_buffer.shp")
+    band_raster <- invisible(terra::rast(band))
     
-    # query spectral bands (raster-based approach)
-    qut <- terra::zonal(r, p, fun="median", na.rm=TRUE)
-    # rename ID field
-    names(qut)[which(names(qut) %in% "layer")] <- "pid"
-    
-    # # query spectral bands (vector-based approach)
-    # qut <- terra::extract(r, p_in, fun="median", touches=FALSE, small=FALSE, na.rm=TRUE)
-    # # rename ID field
-    # names(qut)[which(names(qut) %in% "ID")] <- "pid"
-    
-    # set acquisition date
-    fname <- basename(f_list[f])
-    date_dt_format <- paste(substr(fname, 8, 11), "-", substr(fname, 12, 13), "-", substr(fname, 14, 15), " ", substr(fname, 17, 18), ":", substr(fname, 19, 20), ":", substr(fname, 21, 22), sep="")
-    epoch_value <- as.numeric(as.POSIXct(strftime(date_dt_format, format="%Y-%m-%d %H:%M:%S", tz="GMT", usetz = FALSE), tz = "UTC"))
-    qut$date <- as.character(date_dt_format)
-    qut$epoch <- as.integer(epoch_value)
-    
-    # # bind result to output data frame
-    # out_df <- rbind(out_df, qut[,c(1,12,13,2,3,4,5,6,7,8,9,10,11)])
-    
-    # append results to output file
-    write.table(qut[which(complete.cases(qut)),c(1,12,13,2,3,4,5,6,7,8,9,10,11)], file=output_file, sep=";", dec=".", row.names=FALSE, col.names=FALSE, na="", quote=FALSE, append=TRUE)
-    
-    suppressWarnings(rm(list=c("r","qut","fname","date_dt_format","epoch_value")))
-    invisible(gc())
-    
-    if(progress){
-      utils::setTxtProgressBar(pb, f/ll)
+    four_closest_pixels <- NULL
+    four_closest_pixels <- tryCatch(t(terra::extract(band_raster, hypstar_point_buffer, fun = "table", 
+                                          touches = F, ID = F, weights = T)), 
+                                    error = function(e){NULL})
+    if(is.null(four_closest_pixels)){
+      output <- NA
+    }else{
+      value <- as.numeric(row.names(four_closest_pixels))
+      
+      four_closest_pixels <- data.table::as.data.table(four_closest_pixels)
+      
+      four_closest_pixels$value <- value
+      
+      names(four_closest_pixels) <- c("weight","value")
+      
+      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:4]#4 is 4 closest pixels
+      
+      #we do not return pixels because there are grid problems
+      
+      #statistics to return
+      output <- mean(four_closest_pixels$value, na.rm = T)
     }
+    
+    return(output)
   }
   
-  if(progress){
-    close(pb)
+  get_statistics_dataset <- function(product_path){
+    library(tidytable)
+    list_of_tifs <- list.files(product_path, full.names = T, recursive = T,
+                               pattern = "\\.tif$")
+    
+    bands <- list_of_tifs[!stringr::str_detect(list_of_tifs, "mask")]
+    
+    extract_names <- stringr::str_match(bands, "m_\\s*(.*?)\\s*.tif")[,2]
+    
+    bands_statistics <- lapply(bands, get_four_closest_pixels_statistic)
+    
+    statistics_dataset <- data.table::data.table()
+    
+    statistics_pivoted <- statistics_dataset %>% mutate(bands = extract_names) %>%
+      mutate(Ref = as.numeric(bands_statistics)) %>%
+      mutate(date = as.Date(substring(basename(product_path),8,15),"%Y%m%d")) %>%
+      mutate(time = substring(basename(product_path),16,22)) %>% 
+      pivot_wider(names_from = bands, values_from = Ref) %>%
+      data.table::as.data.table()
+    
+    #statistics_dataset$bands <- extract_names
+    
+    #statistics_dataset$Ref <- as.numeric(bands_statistics)
+    
+    #here we want to extract also SZA, SAA, VZA, VAA
+    
+    return(statistics_pivoted)
   }
   
-  # # export result
-  # write.table(out_df, file=output_file, sep=";", dec=".", row.names=FALSE, col.names=TRUE, na="", quote=FALSE)
+  all_datasets <- lapply(product_paths,get_statistics_dataset)
   
-  message(paste(c("Query ended at: "), Sys.time(), sep=""))
-  message(paste("Elapsed time ", as.character(paste(as.integer(as.numeric(proc.time() - ptm)[3]/3600), ":", sprintf("%02i", as.integer((as.numeric(proc.time() - ptm)[3]/3600 - as.integer(as.numeric(proc.time() - ptm)[3]/3600)) * 60)), ":", sprintf("%02i", as.integer((as.numeric(proc.time() - ptm)[3]/60 - as.integer(as.numeric(proc.time() - ptm)[3]/60)) * 60)), sep="")), " hours", sep=""))
+  output <- dplyr::bind_rows(all_datasets)   
   
-  # clean workspace and exit
-  suppressWarnings(rm(list=ls()))
-  invisible(gc())
-  q("no")
-  
+  if(output_pivoted){
+    output <- output %>% tidyr::pivot_longer(cols = starts_with("B"),
+                                             names_to = "bands",
+                                             values_to = "Ref") 
+  }
+
+  return(output)
 }
+
 
 #s2_select_measures_and_mean <- function()
 
