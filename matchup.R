@@ -1,5 +1,5 @@
 #Create match-up
-
+#get_hypstar_data ----
 get_hypstar_data <- function(home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/processed",
                              date_start,
                              date_end,
@@ -84,7 +84,7 @@ get_hypstar_data <- function(home_path = "//10.0.1.243/projects/2023_HyperNet-PO
 
 
 #use res variable to make matchup with satellite image
-
+#hypstar_angle_filter_and_mean ----
 hypstar_angle_filter_and_mean <- function(dataset_res, #dataset pivoted of (date,time,VZA,VAA,PAA,B*) #res2_long oppure res
                             minVZA = min(unique(dataset_res$VZA)), #minimum View Zenith Angle
                             maxVZA = max(unique(dataset_res$VZA)), #maximum View Zenith Angle
@@ -151,12 +151,17 @@ hypstar_angle_filter_and_mean <- function(dataset_res, #dataset pivoted of (date
   
 }
 
-hypstar_spectral_resampling <- function(dataset_res,
+#hypstar_spectral_resampling ----
+hypstar_spectral_resampling_to_S2 <- function(dataset_res,
                                         S2_sensor,#can be S2A,S2B,S2C
                                         input_pivoted = T, #dataset_res is pivoted (true) or not (false) 
                                         output_pivoted = T, #output to be pivoted (true) or not (false)
                                         unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
-                                        bands_HYP = read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HYP.csv")){
+                                        bands_HYP = read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HYP.csv"),
+                                        S2_bands = c("B2","B3","B4","B5","B6","B7","B8","B8A","B11","B12"),
+                                        bands_S2 = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/s2_bands.csv")){
+  library(tidytable)
+  
   if(!input_pivoted){
     res2_long <- tidyr::pivot_longer(dataset_res, cols = starts_with("B"),
                                      names_to = "bands",
@@ -166,28 +171,50 @@ hypstar_spectral_resampling <- function(dataset_res,
     dataset_res <- res2_long  
   }
   
-  #hypstar spectral resampling to S2
+  source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/F01_Spectral_Resampling_V02.R")
   
+  origin_band_centers <- sort(unique(bands_HYP$wvl))
   
+  #Crea la matrice di ricampionamento
+  SFR_S2 <- SRF_adapter(origin_band_centers = origin_band_centers,
+                        mode = "SRF",
+                        sensor = as.character(S2_sensor),
+                        ref_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data")[,S2_bands]
   
+  #Eseguo il ricampionamento
+  unpivoted_res <- dataset_res %>% select(-wvl) %>%
+    tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
   
+  band_variables <- names(unpivoted_res)[grepl(x = names(unpivoted_res), pattern = "^B.*")]
   
+  file_resampled <- dataframe_resampler(total_df = unpivoted_res, 
+                                               band_variables = band_variables, #qui serve il nome che le bande hanno nel file originale
+                                               SRF = SFR_S2) 
   
-  
+  res2_long <- tidyr::pivot_longer(file_resampled, cols = starts_with("B"),
+                                   names_to = "bands",
+                                   values_to = "Ref",
+                                   values_drop_na = TRUE) 
+  res2_long <-left_join (res2_long,bands_S2)
+  file_resampled <- res2_long
   
   if(!output_pivoted){
     if(unpivoted_with_bands){
-      not_pivoted <- matchup_selection_res %>% select(-wvl) %>%
+      not_pivoted <- file_resampled %>% select(-wvl) %>%
         tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
     }else{
-      not_pivoted <- matchup_selection_res %>% select(-bands) %>%
+      not_pivoted <- file_resampled %>% select(-bands) %>%
         tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
     }
     
     return(not_pivoted)
   }
+  
+  return(file_resampled)
+  
 }
 
+#get_s2_data ----
 get_s2_data <- function(hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                         repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/", #masked S2 data
                         date_start, 
@@ -306,6 +333,7 @@ get_s2_data <- function(hypstar_point_path = "//10.0.1.243/projects/2023_HyperNe
   return(res)
 }
 
+#s2_angle_filter ----
 s2_angle_filter <- function(dataset_res, #dataset pivoted of (date,time,VZA,VAA,PAA,B*) #res2_long oppure res
                                minVZA = min(unique(dataset_res$VZA)), #minimum View Zenith Angle
                                maxVZA = max(unique(dataset_res$VZA)), #maximum View Zenith Angle
@@ -353,8 +381,8 @@ s2_angle_filter <- function(dataset_res, #dataset pivoted of (date,time,VZA,VAA,
   return(filtered_res)
 }
 
-
-matchup_function <- function(s2_data, 
+#matchup_function ----
+matchup_function_to_S2 <- function(s2_data, 
                              hypstar_data,
                              just_closest_time = T,#closest time (true) or all times in a hour range (false)
                              hour_range = NULL,#if just_closest_time = F, here we need a range of hours
@@ -384,16 +412,32 @@ matchup_function <- function(s2_data,
   hypstar_bands_number <- length(unique(hypstar_data$bands))
   if(hypstar_bands_number > 10){
     print("mancato ricampionamento, viene eseguito")
-    hypstar_resampled <- hypstar_spectral_resampling(hypstar_data,
-                                                     input_pivoted = T)
+    hypstar_resampled_to_S2A <- hypstar_spectral_resampling_to_S2(hypstar_data,
+                                                           S2_sensor = "S2A", 
+                                                           input_pivoted = T) %>%
+      mutate(sensor = "S2A")
+    
+    hypstar_resampled_to_S2B <- hypstar_spectral_resampling_to_S2(hypstar_data,
+                                                                  S2_sensor = "S2B", 
+                                                                  input_pivoted = T) %>%
+      mutate(sensor = "S2B")
+    
+    hypstar_resampled_to_S2C <- hypstar_spectral_resampling_to_S2(hypstar_data,
+                                                                  S2_sensor = "S2C", 
+                                                                  input_pivoted = T) %>%
+      mutate(sensor = "S2C")
+    
+    hypstar_resampled <- hypstar_resampled_to_S2A %>% bind_rows(hypstar_resampled_to_S2B) %>%
+      hypstar_resampled_to_S2C
+    
   }else{
     hypstar_resampled <- hypstar_data
   }
   
   #change col names not to confuse S2 B# and hypstar B#
-  s2_col_renamed <- s2_data %>% rename_with(~paste0(.,"_s2"),-c(bands,date)) 
+  s2_col_renamed <- s2_data %>% rename_with(~paste0(.,"_s2"),-c(bands,date,sensor)) 
   
-  hypstar_col_renamed <- hypstar_resampled %>% rename_with(~paste0(.,"_hyp"),-c(bands,date))
+  hypstar_col_renamed <- hypstar_resampled %>% rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor))
   
     
   library(tidytable)
