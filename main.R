@@ -66,11 +66,12 @@ write.table(s2_angle_filtered, gsub("*data.csv$","data_angle_filtered.csv",outpu
 
 #matchup
 
-matchup_result <- matchup_function(s2_data = s2_data,
+matchup_result <- matchup_function_to_S2(s2_data = s2_data,
                                    hypstar_data = hypstar_data,
                                    input_pivoted = pivoted,
                                    output_pivoted = pivoted,
-                                   unpivoted_with_bands = unpivoted_with_bands)
+                                   unpivoted_with_bands = unpivoted_with_bands,
+                                   delVZA = c(0))
 
 
 ############################

@@ -384,9 +384,21 @@ s2_angle_filter <- function(dataset_res, #dataset pivoted of (date,time,VZA,VAA,
 #matchup_function ----
 matchup_function_to_S2 <- function(s2_data, 
                              hypstar_data,
+                             
+                             delVZA = c(""), #vector deleting View Zenith Angle inside hypstar dataset
+                             delVAA = c(""), #vector deleting View Azimuth Angle inside hypstar datasets
+
                              only_same_date = T,#only same date comparison accepted (true) or closest date (false)
-                             just_closest_time = T,#closest time (true) or all times in a hour range (false)
-                             hour_range = NULL,#if just_closest_time = F, here we need a range of hours. -hour_range/2,x,+hour_range/2
+                             
+                             time_or_sun_angle = F, #consider time (true) or over sun azimuth and zenith angle (false) for filter
+                             just_closest_time_or_sun_angle = T,#closest time/angle (true) or all times/angles in a range (false)
+                             #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
+                             range_time_or_sun_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
+                             
+                             just_closest_view_angle = T,#closest time/angle (true) or all times/angles in a range (false)
+                             #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
+                             range_view_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
+                             
                              input_pivoted = T, #dataset_res is pivoted (true) or not (false) 
                              output_pivoted = T, #output to be pivoted (true) or not (false)
                              unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
@@ -409,6 +421,11 @@ matchup_function_to_S2 <- function(s2_data,
     hypstar_data <- res2_long 
   }
   
+  #to remove specific sensor view angles
+  hypstar_data <- hypstar_data %>%     
+    filter(!(VZA %in% delVZA)) %>%
+    filter(!(VAA %in% delVAA))
+    
   #check spectral resampling of hypstar
   hypstar_bands_number <- length(unique(hypstar_data$bands))
   if(hypstar_bands_number > 13){
@@ -436,19 +453,40 @@ matchup_function_to_S2 <- function(s2_data,
   }
   
   #change col names not to confuse S2 B# and hypstar B#
-  s2_col_renamed <- s2_data %>% rename_with(~paste0(.,"_s2"),-c(bands,date,sensor)) %>%
-    select(-wvl_s2) 
+  s2_col_renamed <- s2_data %>% rename_with(~paste0(.,"_s2"),-c(bands,date,sensor,wvl)) 
   
-  hypstar_col_renamed <- hypstar_resampled %>% rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor)) %>%
-    select(-wvl_hyp)
+  hypstar_col_renamed <- hypstar_resampled %>% rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor,wvl)) 
   
     
   library(tidytable)
   
   
-  #TIME PROBLEM
+  #DATE PROBLEM
   if(only_same_date){
-    merge_by_date_and_bands <- s2_col_renamed %>% left_join(hypstar_col_renamed, by = c("bands","date","sensor")) %>%
+    #only_same_date
+    date_output <- s2_col_renamed %>% left_join(hypstar_col_renamed, by = c("bands","date","sensor","wvl")) 
+     
+  }else{
+    #closest date 
+    print("closest date will have the S2 date as 'date' variable")
+    s2_with_date <- s2_col_renamed %>% rename(date_s2 = date)
+    hypstar_with_date <- hypstar_col_renamed %>% rename(date_hyp = date)
+    date_output <- s2_with_date %>% left_join(hypstar_with_date, by = c("bands","sensor","wvl")) %>%
+      mutate(date_diff = abs(difftime(date_s2, date_hyp))) %>%
+      group_by(sensor,bands) %>%
+      mutate(lowest_date_diff = min(date_diff)) %>%
+      ungroup() %>%
+      filter(date_diff == lowest_date_diff) %>%
+      select(-date_diff,-lowest_date_diff) %>%
+      select(-date_hyp) %>%
+      rename(date = date_s2) 
+  }
+  
+  #SUN TIME OR SUN ANGLE PROBLEM
+  if(time_or_sun_angle){
+    
+    #create time variables and time difference
+    time_output <- date_output %>%
       mutate(time_s2 = substring(time_s2,2,8)) %>%
       mutate(time_s2 = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_s2))) %>%
       mutate(time_s2 = substring(time_s2,1,8)) %>%
@@ -458,51 +496,164 @@ matchup_function_to_S2 <- function(s2_data,
       mutate(date_time_s2 = as.POSIXct(paste(date,time_s2))) %>%
       mutate(date_time_hyp = as.POSIXct(paste(date,time_hyp))) %>%
       mutate(time_diff = abs(difftime(date_time_s2, date_time_hyp, units = "sec")))%>%
-      select(-date_time_s2,-date_time_hyp)
+      select(-date_time_s2,-date_time_hyp) 
     
-    if(just_closest_time){
-      merge_closest_time <- merge_by_date_and_bands %>% 
-        group_by(date,bands,sensor) %>%
+    if(just_closest_time_or_sun_angle){
+      #only closest time
+      time_or_sun_angle_output <- time_output %>% 
+        group_by(date,bands,sensor,wvl) %>%
         mutate(lowest_time_diff = min(time_diff)) %>%
         ungroup() %>%
         filter(time_diff == lowest_time_diff) %>%
         select(-time_diff,-lowest_time_diff) 
     }else{
-      #execute mean over all times without weight
-      merge_closest_time <- merge_by_date_and_bands %>%
-        filter(time_diff < hour_range/2*3600) %>%
+      #take a window of times and mean
+      
+      #here we need to use the geosphere package to compute the centroid of a spherical polygon
+      convert_angles_for_geosphere <- time_output %>%
+        mutate(SAA_hyp = ifelse(SAA_hyp > 180, 180-SAA_hyp, SAA_hyp )) 
+      
+      reconvert_for_us <- convert_angles_for_geosphere %>%
+        filter(time_diff < range_time_or_sun_angle/2*3600) %>%
         select(-time_diff) %>%
-        group_by(date,bands,sensor,VZA_hyp,VAA_hyp) %>%
+        select(-time_hyp) %>%
+        group_by(date,bands,sensor,wvl,VZA_hyp,VAA_hyp) %>%
         mutate(count = row_number()) %>%
         mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
-        mutate(mean_SZA_hyp = mean(SZA_hyp)) %>%
-        mutate(mean_SAA_hyp  = mean(SAA_hyp)) %>%
+        mutate(mean_SZA_hyp = geosphere::centroid(cbind(SAA_hyp,SZA_hyp))[2]) %>%
+        mutate(mean_SAA_hyp = geosphere::centroid(cbind(SAA_hyp,SZA_hyp))[1]) %>%
         ungroup() %>%
         select(-count) %>%
         select(-Ref_hyp) %>%
         select(-SZA_hyp) %>%
         select(-SAA_hyp) %>%
-        select(-time_hyp) %>%
         #select(-time_diff)%>%
         unique() 
+      
+      time_or_sun_angle_output <- reconvert_for_us %>% 
+        mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp < 0, 180 - mean_SAA_hyp, mean_SAA_hyp))
+      
+      # if(weighted_mean){
+      #   #create a weighted mean over times
+      #   time_or_sun_output <- time_output %>%
+      #     filter(time_diff < range_time_or_sun_angle/2*3600) %>%
+      #     #select(-time_diff) %>%
+      #     select(-time_hyp) %>%
+      #     mutate(num_Ref = as.numeric(time_diff)*Ref_hyp) %>%
+      #     mutate(num_SZA = as.numeric(time_diff)*SZA_hyp) %>%
+      #     mutate(num_SAA = as.numeric(time_diff)*SAA_hyp) %>%
+      #     group_by(date,bands,sensor,VZA_hyp,VAA_hyp) %>%
+      #     mutate(count = row_number()) %>%
+      #     mutate(total_den = sum(as.numeric(time_diff))) %>%
+      #     mutate(total_num_Ref = sum(num_Ref)) %>%
+      #     mutate(total_num_SZA = sum(num_SZA)) %>%
+      #     mutate(total_num_SAA = sum(num_SAA)) %>%
+      #     ungroup() %>%
+      #     mutate(mean_Ref_hyp = total_num_Ref/total_den) %>%
+      #     mutate(mean_SZA_hyp = total_num_SZA/total_den) %>%
+      #     mutate(mean_SAA_hyp = total_num_SAA/total_den) %>%
+      #     select(-count) %>%
+      #     select(-Ref_hyp,-SZA_hyp,-SAA_hyp) %>%
+      #     select(-num_Ref,-num_SZA,-num_SAA) %>%
+      #     select(-total_den,-total_num_Ref,-total_num_SZA,-total_num_SAA) %>%
+      #     select(-time_diff) %>%
+      #     unique()
+      # }else{#execute mean over all times in window without weight
+      #   
+      # }
+      
     }
-     
-  }
-  
-  #ANGLE PROBLEM
-   
-  
-  if(!output_pivoted){
-    if(unpivoted_with_bands){
-      not_pivoted <- filtered_res %>% select(-wvl) %>%
-        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
+  }else{
+    #create time variables and angle difference
+    sun_angle_output <- date_output %>%
+      mutate(time_s2 = substring(time_s2,2,8)) %>%
+      mutate(time_s2 = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_s2))) %>%
+      mutate(time_s2 = substring(time_s2,1,8)) %>%
+      mutate(time_hyp = substring(time_hyp,2,8)) %>%
+      mutate(time_hyp = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_hyp))) %>%
+      mutate(time_hyp = substring(time_hyp,1,8)) %>%
+      mutate(angle_diff = 180/pi*acos( sin(SAA_s2*pi/180)*sin(SAA_hyp*pi/180) + cos(SAA_s2*pi/180) * cos(SAA_hyp*pi/180) * cos( SZA_s2*pi/180-SZA_hyp*pi/180 ))) 
+    #https://en.wikipedia.org/wiki/Great-circle_distance#cite_ref-2
+      
+    if(just_closest_time_or_sun_angle){
+      #only closest angle
+      time_or_sun_angle_output <- sun_angle_output %>% 
+        group_by(date,bands,wvl,sensor) %>%
+        mutate(lowest_angle_diff = min(angle_diff)) %>%
+        ungroup() %>%
+        filter(angle_diff == lowest_angle_diff) %>%
+        select(-angle_diff,-lowest_angle_diff) 
     }else{
-      not_pivoted <- filtered_res %>% select(-bands) %>%
-        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
+      #take a window of angles and mean
+      
+      convert_angles_for_geosphere <- sun_angle_output %>%
+        mutate(SAA_hyp = ifelse(SAA_hyp > 180, 180-SAA_hyp, SAA_hyp )) 
+      
+      reconvert_for_us <- convert_angles_for_geosphere %>%
+        filter(angle_diff < range_time_or_sun_angle/2) %>%
+        select(-angle_diff) %>%
+        select(-time_hyp) %>%
+        group_by(date,bands,sensor,wvl,VZA_hyp,VAA_hyp) %>%
+        mutate(count = row_number()) %>%
+        mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
+        mutate(mean_SZA_hyp = geosphere::centroid(cbind(SAA_hyp,SZA_hyp))[2]) %>%
+        mutate(mean_SAA_hyp = geosphere::centroid(cbind(SAA_hyp,SZA_hyp))[1]) %>%
+        ungroup() %>%
+        select(-count) %>%
+        select(-Ref_hyp) %>%
+        select(-SZA_hyp) %>%
+        select(-SAA_hyp) %>%
+        #select(-angle_diff)%>%
+        unique() 
+      
+      time_or_sun_angle_output <- reconvert_for_us %>% 
+        mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp < 0, 180 - mean_SAA_hyp, mean_SAA_hyp))
+      
     }
-    
-    return(not_pivoted)
   }
+  
+  #VIEW ANGLE PROBLEM
+  med_view_angle_output <- time_or_sun_angle_output %>%
+    mutate(angle_diff = 180/pi*acos( sin(VAA_s2*pi/180)*sin(VAA_hyp*pi/180) + cos(VAA_s2*pi/180) * cos(VAA_hyp*pi/180) * cos( VZA_s2*pi/180-VZA_hyp*pi/180 ))) 
+  #https://en.wikipedia.org/wiki/Great-circle_distance#cite_ref-2
+  
+  if(just_closest_view_angle){
+    #only closest angle
+    view_angle_output <- med_view_angle_output %>% 
+      group_by(date,bands,wvl,sensor) %>%
+      mutate(lowest_angle_diff = min(angle_diff)) %>%
+      ungroup() %>%
+      filter(angle_diff == lowest_angle_diff) %>%
+      select(-angle_diff,-lowest_angle_diff) 
+  }else{
+    #take a window of angles and mean
+    
+    convert_angles_for_geosphere <- med_view_angle_output %>%
+      mutate(VAA_hyp = ifelse(VAA_hyp > 180, 180-VAA_hyp, VAA_hyp )) 
+    
+    reconvert_for_us <- convert_angles_for_geosphere %>%
+      filter(angle_diff < range_view_angle/2) %>%
+      select(-angle_diff) %>%
+      select(-time_hyp) %>%
+      group_by(date,bands,wvl,sensor) %>%
+      mutate(count = row_number()) %>%
+      mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
+      mutate(mean_VZA_hyp = geosphere::centroid(cbind(VAA_hyp,VZA_hyp))[2]) %>%
+      mutate(mean_VAA_hyp = geosphere::centroid(cbind(VAA_hyp,VZA_hyp))[1]) %>%
+      ungroup() %>%
+      select(-count) %>%
+      select(-Ref_hyp) %>%
+      select(-VZA_hyp) %>%
+      select(-VAA_hyp) %>%
+      #select(-angle_diff)%>%
+      unique() 
+    
+    view_angle_output <- reconvert_for_us %>% 
+      mutate(mean_VAA_hyp = ifelse(mean_VAA_hyp < 0, 180 - mean_VAA_hyp, mean_VAA_hyp))
+    
+  }
+  
+  return(view_angle_output)
 }
 
 
