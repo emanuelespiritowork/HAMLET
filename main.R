@@ -92,3 +92,13 @@ s2a <- s2a[-1,]
 write.table(s2a,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/S2C_SRF_10b_bands.csv", sep = ",",
                    quote = F, row.names = F)
 
+############################
+s2c <- read.table("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data/SRF/S2C_SRF_13b.csv",
+                  sep = ",") %>% janitor::row_to_names(row_number = 1)
+names(s2c) <- c("band","B1","B2","B3","B4","B5","B6","B7","B8","B8A","B9","B10","B11","B12")
+s2c_fill <- data.frame(1:299,0,0,0,0,0,0,0,0,0,0,0,0,0)
+names(s2c_fill) <- c("band","B1","B2","B3","B4","B5","B6","B7","B8","B8A","B9","B10","B11","B12")
+s2c <- s2c_fill %>% bind_rows(s2c) 
+s2c <- s2c %>% mutate(band = as.numeric(band)) 
+write.table(s2c, "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data/SRF/S2C_SRF_13b.csv",
+            sep = ",", quote = F, row.names = F)

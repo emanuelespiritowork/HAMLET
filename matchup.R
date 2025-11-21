@@ -151,7 +151,7 @@ hypstar_angle_filter_and_mean <- function(dataset_res, #dataset pivoted of (date
   
 }
 
-#hypstar_spectral_resampling ----
+#hypstar_spectral_resampling_to_S2 ----
 hypstar_spectral_resampling_to_S2 <- function(dataset_res,
                                         S2_sensor,#can be S2A,S2B,S2C
                                         input_pivoted = T, #dataset_res is pivoted (true) or not (false) 
@@ -176,10 +176,10 @@ hypstar_spectral_resampling_to_S2 <- function(dataset_res,
   origin_band_centers <- sort(unique(bands_HYP$wvl))
   
   #Crea la matrice di ricampionamento
-  SFR_S2 <- SRF_adapter(origin_band_centers = origin_band_centers,
+  SFR_S2 <- suppressWarnings(SRF_adapter(origin_band_centers = origin_band_centers,
                         mode = "SRF",
                         sensor = as.character(S2_sensor),
-                        ref_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data")[,S2_bands]
+                        ref_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data")[,S2_bands])
   
   #Eseguo il ricampionamento
   unpivoted_res <- dataset_res %>% select(-wvl) %>%
@@ -384,8 +384,9 @@ s2_angle_filter <- function(dataset_res, #dataset pivoted of (date,time,VZA,VAA,
 #matchup_function ----
 matchup_function_to_S2 <- function(s2_data, 
                              hypstar_data,
+                             only_same_date = T,#only same date comparison accepted (true) or closest date (false)
                              just_closest_time = T,#closest time (true) or all times in a hour range (false)
-                             hour_range = NULL,#if just_closest_time = F, here we need a range of hours
+                             hour_range = NULL,#if just_closest_time = F, here we need a range of hours. -hour_range/2,x,+hour_range/2
                              input_pivoted = T, #dataset_res is pivoted (true) or not (false) 
                              output_pivoted = T, #output to be pivoted (true) or not (false)
                              unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
@@ -410,7 +411,7 @@ matchup_function_to_S2 <- function(s2_data,
   
   #check spectral resampling of hypstar
   hypstar_bands_number <- length(unique(hypstar_data$bands))
-  if(hypstar_bands_number > 10){
+  if(hypstar_bands_number > 13){
     print("mancato ricampionamento, viene eseguito")
     hypstar_resampled_to_S2A <- hypstar_spectral_resampling_to_S2(hypstar_data,
                                                            S2_sensor = "S2A", 
@@ -428,37 +429,68 @@ matchup_function_to_S2 <- function(s2_data,
       mutate(sensor = "S2C")
     
     hypstar_resampled <- hypstar_resampled_to_S2A %>% bind_rows(hypstar_resampled_to_S2B) %>%
-      hypstar_resampled_to_S2C
+      bind_rows(hypstar_resampled_to_S2C)
     
   }else{
     hypstar_resampled <- hypstar_data
   }
   
   #change col names not to confuse S2 B# and hypstar B#
-  s2_col_renamed <- s2_data %>% rename_with(~paste0(.,"_s2"),-c(bands,date,sensor)) 
+  s2_col_renamed <- s2_data %>% rename_with(~paste0(.,"_s2"),-c(bands,date,sensor)) %>%
+    select(-wvl_s2) 
   
-  hypstar_col_renamed <- hypstar_resampled %>% rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor))
+  hypstar_col_renamed <- hypstar_resampled %>% rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor)) %>%
+    select(-wvl_hyp)
   
     
   library(tidytable)
   
-  #data che coincide
-  s2_dates <- unique(s2_col_renamed$date)
   
-  hypstar_date_filtered <- hypstar_data %>% filter(date %in% s2_dates)
-  
-  #orario più vicino OPPURE media dei valori in una forchetta attorno ad S2
-  if(just_closest_time){
-    merge_by_date_and_bands <- s2_col_renamed %>% left_join(hypstar_date_filtered, by = c(bands,date)) %>%
-      mutate(time_diff = time_s2-time_hyp) %>%
-      group_by(date,bands) %>%
-      mutate(great_time_diff = max(time_diff)) %>%
-      ungroup() %>%
-      filter(time_diff == great_time_diff) %>%
-      select(-time_diff,-great_time_diff)
-  }else{
-    #weight the Ref with time_diff
+  #TIME PROBLEM
+  if(only_same_date){
+    merge_by_date_and_bands <- s2_col_renamed %>% left_join(hypstar_col_renamed, by = c("bands","date","sensor")) %>%
+      mutate(time_s2 = substring(time_s2,2,8)) %>%
+      mutate(time_s2 = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_s2))) %>%
+      mutate(time_s2 = substring(time_s2,1,8)) %>%
+      mutate(time_hyp = substring(time_hyp,2,8)) %>%
+      mutate(time_hyp = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_hyp))) %>%
+      mutate(time_hyp = substring(time_hyp,1,8)) %>%
+      mutate(date_time_s2 = as.POSIXct(paste(date,time_s2))) %>%
+      mutate(date_time_hyp = as.POSIXct(paste(date,time_hyp))) %>%
+      mutate(time_diff = abs(difftime(date_time_s2, date_time_hyp, units = "sec")))%>%
+      select(-date_time_s2,-date_time_hyp)
+    
+    if(just_closest_time){
+      merge_closest_time <- merge_by_date_and_bands %>% 
+        group_by(date,bands,sensor) %>%
+        mutate(lowest_time_diff = min(time_diff)) %>%
+        ungroup() %>%
+        filter(time_diff == lowest_time_diff) %>%
+        select(-time_diff,-lowest_time_diff) 
+    }else{
+      #execute mean over all times without weight
+      merge_closest_time <- merge_by_date_and_bands %>%
+        filter(time_diff < hour_range/2*3600) %>%
+        select(-time_diff) %>%
+        group_by(date,bands,sensor,VZA_hyp,VAA_hyp) %>%
+        mutate(count = row_number()) %>%
+        mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
+        mutate(mean_SZA_hyp = mean(SZA_hyp)) %>%
+        mutate(mean_SAA_hyp  = mean(SAA_hyp)) %>%
+        ungroup() %>%
+        select(-count) %>%
+        select(-Ref_hyp) %>%
+        select(-SZA_hyp) %>%
+        select(-SAA_hyp) %>%
+        select(-time_hyp) %>%
+        #select(-time_diff)%>%
+        unique() 
+    }
+     
   }
+  
+  #ANGLE PROBLEM
+   
   
   if(!output_pivoted){
     if(unpivoted_with_bands){
