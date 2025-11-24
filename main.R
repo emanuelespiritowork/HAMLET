@@ -12,6 +12,7 @@ date_start <- "2025-05-01"
 date_end <- "2025-05-10"
 output_s2_file <- "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/s2_data.csv"
 output_hypstar_file <- "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/hypstar_data.csv"
+output_PRISMA_file <- "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/PRISMA_data.csv"
 pivoted <- F #data to be pivoted (true) or not (false)
 unpivoted_with_bands <- T #data to be unpivoted with bands (true) or with wavelength (false)
 #minVZA = ?, #minimum View Zenith Angle
@@ -64,15 +65,33 @@ s2_angle_filtered <- s2_angle_filter(dataset_res = s2_data,
 write.table(s2_angle_filtered, gsub("*data.csv$","data_angle_filtered.csv",output_s2_file), quote = F, sep = ";",
             row.names = F)
 
-#matchup
+#matchup to S2
 
-matchup_result <- matchup_function_to_S2(s2_data = s2_data,
+matchup_result_to_S2 <- matchup_function_to_S2(s2_data = s2_data,
                                    hypstar_data = hypstar_data,
                                    input_pivoted = pivoted,
                                    output_pivoted = pivoted,
                                    unpivoted_with_bands = unpivoted_with_bands,
                                    delVZA = c(0))
 
+#get PRISMA data 
+
+PRISMA_data <- get_s2_data(date_start = date_start,
+                           date_end = date_end,
+                           output_pivoted = pivoted,
+                           unpivoted_with_bands = unpivoted_with_bands) 
+
+write.table(PRISMA_data, output_PRISMA_file, quote = F, sep = ";",
+            row.names = F)
+
+#matchup to PRISMA
+
+matchup_result_to_PRISMA <- matchup_function_to_PRISMA(PRISMA_data = PRISMA_data,
+                                                       hypstar_data = hypstar_data,
+                                                       input_pivoted = pivoted,
+                                                       output_pivoted = pivoted,
+                                                       unpivoted_with_bands = unpivoted_with_bands,
+                                                       delVZA = c(0))
 
 ############################
 trasporre <- read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/s2_bands.csv", sep = ";")

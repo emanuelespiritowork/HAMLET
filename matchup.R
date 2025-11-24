@@ -943,7 +943,7 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
   }else{
     #closest date 
     print("closest date will have the S2 date as 'date' variable")
-    s2_with_date <- s2_col_renamed %>% rename(date_s2 = date)
+    PRISMA_with_date <- PRISMA_col_renamed %>% rename(date_prs = date)
     hypstar_with_date <- hypstar_col_renamed %>% rename(date_hyp = date)
     date_output <- s2_with_date %>% left_join(hypstar_with_date, by = c("bands","sensor","wvl")) %>%
       mutate(date_diff = abs(difftime(date_s2, date_hyp))) %>%
