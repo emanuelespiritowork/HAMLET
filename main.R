@@ -8,8 +8,9 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/F01_Spectral
 
 #Parameter of selection:  
 library(tidytable)
-date_start <- "2025-05-01"
-date_end <- "2025-05-10"
+date_start <- "2024-07-25"
+date_end <- "2024-08-31"
+repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/prova_codice_hypstar/"
 output_s2_file <- "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/s2_data.csv"
 output_hypstar_file <- "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/hypstar_data.csv"
 output_PRISMA_file <- "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/PRISMA_data.csv"
@@ -76,10 +77,11 @@ matchup_result_to_S2 <- matchup_function_to_S2(s2_data = s2_data,
 
 #get PRISMA data 
 
-PRISMA_data <- get_s2_data(date_start = date_start,
-                           date_end = date_end,
-                           output_pivoted = pivoted,
-                           unpivoted_with_bands = unpivoted_with_bands) 
+PRISMA_data <- get_PRISMA_data(date_start = date_start,
+                               date_end = date_end,
+                               output_pivoted = pivoted,
+                               repo_root_path = repo_root_path_prs,
+                               unpivoted_with_bands = unpivoted_with_bands) 
 
 write.table(PRISMA_data, output_PRISMA_file, quote = F, sep = ";",
             row.names = F)

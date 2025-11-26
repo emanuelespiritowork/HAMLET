@@ -11,6 +11,9 @@ get_hypstar_data <- function(date_start,
   folder_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE)) %>%
     mutate(date = substr(folder_name, 4, 11) %>% as.Date(., format = "%Y%m%d"),
            time = substr(folder_name, 12, 20)) %>%
+    mutate(time = substring(time,2,8)) %>%
+    mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
+    mutate(time = substring(time,1,8)) %>%
     filter(date >= date_start,
            date <= date_end)
   
@@ -64,7 +67,11 @@ get_hypstar_data <- function(date_start,
   
   #remove PAA
   
-  res <- res  %>% select(-PAA)
+  res <- res  %>% select(-PAA) %>%
+    mutate(SAA = correct_azimuth_angle(SAA)) %>%
+    mutate(VAA = correct_azimuth_angle(VAA)) %>%
+    mutate(SZA = abs(SZA)) %>%
+    mutate(VZA = abs(VZA))
   
   if(!output_pivoted){
     if(unpivoted_with_bands){
@@ -354,6 +361,9 @@ get_s2_data <- function(date_start,
       mutate(Ref = as.numeric(bands_statistics)) %>%
       mutate(date = as.Date(substring(basename(product_path),8,15),"%Y%m%d")) %>%
       mutate(time = substring(basename(product_path),16,22)) %>% 
+      mutate(time = substring(time,2,8)) %>%
+      mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
+      mutate(time = substring(time,1,8)) %>%
       pivot_wider(names_from = bands, values_from = Ref) %>%
       mutate(sensor = sensor_ID) %>%
       data.table::as.data.table()
@@ -370,7 +380,19 @@ get_s2_data <- function(date_start,
   all_datasets <- lapply(product_paths,get_statistics_dataset)
   
   res <- dplyr::bind_rows(all_datasets) %>%
-    na.omit()
+    na.omit() %>%
+    rowwise() %>%
+    mutate(SAA = correct_azimuth_angle(SAA)) %>%
+    ungroup() %>%
+    rowwise() %>%
+    mutate(VAA = correct_azimuth_angle(VAA)) %>%
+    ungroup() %>%
+    rowwise() %>%
+    mutate(SZA = abs(SZA)) %>%
+    ungroup() %>%
+    rowwise() %>%
+    mutate(VZA = abs(VZA)) %>%
+    ungroup()
   
   res2_long <- tidyr::pivot_longer(res, cols = starts_with("B"),
                                    names_to = "bands",
@@ -449,10 +471,10 @@ get_PRISMA_data <- function(date_start,
                             PRISMA_level_product = "L1",
                             processing_level = "Atcor_regrid_crop_smooth",
                             hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
-                           repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/", #PRISMA data
-                           output_pivoted = T, #output to be pivoted (true) or not (false)
-                           unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
-                           bands_PRISMA = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/PRISMA_bands.csv")){
+                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/", #PRISMA data
+                            output_pivoted = T, #output to be pivoted (true) or not (false)
+                            unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
+                            bands_PRISMA = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/PRISMA_bands.csv")){
   #here we need to choose the format of PRISMA data
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
@@ -547,12 +569,18 @@ get_PRISMA_data <- function(date_start,
       STD_offset <- 0
     }
     
+    read_angle_and_time <- read.csv(paste0(product_path,"/ATCOR/all_angles_file.csv"))
+    
     statistics_pivoted <- statistics_dataset %>% mutate(bands = paste0("B",1:230)) %>%
       mutate(Ref = as.numeric(bands_statistics)) %>%
-      mutate(date = as.Date(substring(basename(product_path),6+OFFL_offset+STD_offset+nchar(PRISMA_level_product),13+OFFL_offset+STD_offset+nchar(PRISMA_level_product)),"%Y%m%d")) %>%
-      mutate(time = substring(basename(product_path),12+OFFL_offset+STD_offset+nchar(PRISMA_level_product),19+OFFL_offset+STD_offset+nchar(PRISMA_level_product))) %>% 
+      mutate(date = as.Date(substring(read_angle_and_time$date, 1,10),"%Y-%m-%d")) %>%
+      mutate(time = substring(read_angle_and_time$date, 12,19)) %>% 
       pivot_wider(names_from = bands, values_from = Ref) %>%
       mutate(sensor = sensor_ID) %>%
+      mutate(SAA = read_angle_and_time$sunaz) %>%
+      mutate(SZA = read_angle_and_time$sunzen) %>%
+      mutate(VZA = read_angle_and_time$sensor_zenith) %>%
+      mutate(VAA = read_angle_and_time$sensor_azimuth) %>%
       data.table::as.data.table()
     
     #statistics_dataset$bands <- extract_names
@@ -567,7 +595,19 @@ get_PRISMA_data <- function(date_start,
   all_datasets <- lapply(product_paths,get_statistics_dataset)
   
   res <- dplyr::bind_rows(all_datasets) %>%
-    na.omit()
+    na.omit() %>%
+    rowwise() %>%
+    mutate(SAA = correct_azimuth_angle(SAA)) %>%
+    ungroup() %>%
+    rowwise() %>%
+    mutate(VAA = correct_azimuth_angle(VAA)) %>%
+    ungroup() %>%
+    rowwise() %>%
+    mutate(SZA = abs(SZA)) %>%
+    ungroup() %>%
+    rowwise() %>%
+    mutate(VZA = abs(VZA)) %>%
+    ungroup()
   
   res2_long <- tidyr::pivot_longer(res, cols = starts_with("B"),
                                    names_to = "bands",
@@ -677,7 +717,8 @@ matchup_function_to_S2 <- function(s2_data,
   #DATE PROBLEM
   if(only_same_date){
     #only_same_date
-    date_output <- s2_col_renamed %>% left_join(hypstar_col_renamed, by = c("bands","date","sensor","wvl")) 
+    date_output <- s2_col_renamed %>% left_join(hypstar_col_renamed, by = c("bands","date","sensor","wvl")) %>%
+      na.omit()
      
   }else{
     #closest date 
@@ -692,7 +733,8 @@ matchup_function_to_S2 <- function(s2_data,
       filter(date_diff == lowest_date_diff) %>%
       select(-date_diff,-lowest_date_diff) %>%
       select(-date_hyp) %>%
-      rename(date = date_s2) 
+      rename(date = date_s2) %>%
+      na.omit()
   }
   
   #SUN TIME OR SUN ANGLE PROBLEM
@@ -700,12 +742,6 @@ matchup_function_to_S2 <- function(s2_data,
     
     #create time variables and time difference
     time_output <- date_output %>%
-      mutate(time_s2 = substring(time_s2,2,8)) %>%
-      mutate(time_s2 = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_s2))) %>%
-      mutate(time_s2 = substring(time_s2,1,8)) %>%
-      mutate(time_hyp = substring(time_hyp,2,8)) %>%
-      mutate(time_hyp = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_hyp))) %>%
-      mutate(time_hyp = substring(time_hyp,1,8)) %>%
       mutate(date_time_s2 = as.POSIXct(paste(date,time_s2))) %>%
       mutate(date_time_hyp = as.POSIXct(paste(date,time_hyp))) %>%
       mutate(time_diff = abs(difftime(date_time_s2, date_time_hyp, units = "sec")))%>%
@@ -938,22 +974,24 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
   #DATE PROBLEM
   if(only_same_date){
     #only_same_date
-    date_output <- PRISMA_col_renamed %>% left_join(hypstar_col_renamed, by = c("bands","date","sensor","wvl")) 
+    date_output <- PRISMA_col_renamed %>% left_join(hypstar_col_renamed, by = c("bands","date","sensor","wvl")) %>%
+      na.omit()
     
   }else{
     #closest date 
     print("closest date will have the S2 date as 'date' variable")
     PRISMA_with_date <- PRISMA_col_renamed %>% rename(date_prs = date)
     hypstar_with_date <- hypstar_col_renamed %>% rename(date_hyp = date)
-    date_output <- s2_with_date %>% left_join(hypstar_with_date, by = c("bands","sensor","wvl")) %>%
-      mutate(date_diff = abs(difftime(date_s2, date_hyp))) %>%
+    date_output <- PRISMA_with_date %>% left_join(hypstar_with_date, by = c("bands","sensor","wvl")) %>%
+      mutate(date_diff = abs(difftime(date_prs, date_hyp))) %>%
       group_by(sensor,bands) %>%
       mutate(lowest_date_diff = min(date_diff)) %>%
       ungroup() %>%
       filter(date_diff == lowest_date_diff) %>%
       select(-date_diff,-lowest_date_diff) %>%
       select(-date_hyp) %>%
-      rename(date = date_s2) 
+      rename(date = date_prs) %>%
+      na.omit()
   }
   
   #SUN TIME OR SUN ANGLE PROBLEM
@@ -961,16 +999,10 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
     
     #create time variables and time difference
     time_output <- date_output %>%
-      mutate(time_s2 = substring(time_s2,2,8)) %>%
-      mutate(time_s2 = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_s2))) %>%
-      mutate(time_s2 = substring(time_s2,1,8)) %>%
-      mutate(time_hyp = substring(time_hyp,2,8)) %>%
-      mutate(time_hyp = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_hyp))) %>%
-      mutate(time_hyp = substring(time_hyp,1,8)) %>%
-      mutate(date_time_s2 = as.POSIXct(paste(date,time_s2))) %>%
+      mutate(date_time_prs = as.POSIXct(paste(date,time_prs))) %>%
       mutate(date_time_hyp = as.POSIXct(paste(date,time_hyp))) %>%
-      mutate(time_diff = abs(difftime(date_time_s2, date_time_hyp, units = "sec")))%>%
-      select(-date_time_s2,-date_time_hyp) 
+      mutate(time_diff = abs(difftime(date_time_prs, date_time_hyp, units = "sec")))%>%
+      select(-date_time_prs,-date_time_hyp) 
     
     if(just_closest_time_or_sun_angle){
       #only closest time
@@ -1040,13 +1072,13 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
   }else{
     #create time variables and angle difference
     sun_angle_output <- date_output %>%
-      mutate(time_s2 = substring(time_s2,2,8)) %>%
-      mutate(time_s2 = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_s2))) %>%
-      mutate(time_s2 = substring(time_s2,1,8)) %>%
+      mutate(time_prs = substring(time_prs,2,8)) %>%
+      mutate(time_prs = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_prs))) %>%
+      mutate(time_prs = substring(time_prs,1,8)) %>%
       mutate(time_hyp = substring(time_hyp,2,8)) %>%
       mutate(time_hyp = sub("\\s+$", "", gsub('(.{2})', '\\1:', time_hyp))) %>%
       mutate(time_hyp = substring(time_hyp,1,8)) %>%
-      mutate(angle_diff = 180/pi*acos( sin(SAA_s2*pi/180)*sin(SAA_hyp*pi/180) + cos(SAA_s2*pi/180) * cos(SAA_hyp*pi/180) * cos( SZA_s2*pi/180-SZA_hyp*pi/180 ))) 
+      mutate(angle_diff = 180/pi*acos( sin(SAA_prs*pi/180)*sin(SAA_hyp*pi/180) + cos(SAA_prs*pi/180) * cos(SAA_hyp*pi/180) * cos( SZA_prs*pi/180-SZA_hyp*pi/180 ))) 
     #https://en.wikipedia.org/wiki/Great-circle_distance#cite_ref-2
     
     if(just_closest_time_or_sun_angle){
@@ -1136,8 +1168,13 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
 
 
 
-
-
+correct_azimuth_angle <- function(angle){
+  if(angle < 0){
+    return(180-angle)
+  }else{
+    return(angle)
+  }
+}
 
 
 
