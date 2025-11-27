@@ -2,7 +2,7 @@
 #get_hypstar_data ----
 get_hypstar_data <- function(date_start,
                              date_end,
-                             home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/processed",
+                             home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
                              output_pivoted = T, #output to be pivoted (true) or not (false)
                              unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
                              bands_HYP = read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HYP.csv")){
@@ -11,9 +11,6 @@ get_hypstar_data <- function(date_start,
   folder_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE)) %>%
     mutate(date = substr(folder_name, 4, 11) %>% as.Date(., format = "%Y%m%d"),
            time = substr(folder_name, 12, 20)) %>%
-    mutate(time = substring(time,2,8)) %>%
-    mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
-    mutate(time = substring(time,1,8)) %>%
     filter(date >= date_start,
            date <= date_end)
   
@@ -58,6 +55,7 @@ get_hypstar_data <- function(date_start,
   }) %>% bind_rows() %>%
     filter(B1000 < 6000 ) # max value @ 836 nm
   
+  
   res2_long <- tidyr::pivot_longer(res, cols = starts_with("B"),
                                    names_to = "bands",
                                    values_to = "Ref",
@@ -68,11 +66,14 @@ get_hypstar_data <- function(date_start,
   #remove PAA
   
   res <- res  %>% select(-PAA) %>%
-    mutate(SAA = correct_azimuth_angle(SAA)) %>%
-    mutate(VAA = correct_azimuth_angle(VAA)) %>%
-    mutate(SZA = abs(SZA)) %>%
-    mutate(VZA = abs(VZA))
-  
+    mutate(time = substring(time,2,8)) %>%
+    mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
+    mutate(time = substring(time,1,8))
+    # mutate(SAA = correct_azimuth_angle(SAA)) %>%
+    # mutate(VAA = correct_azimuth_angle(VAA)) %>%
+    # mutate(SZA = abs(SZA)) %>%
+    # mutate(VZA = abs(VZA))
+    # 
   if(!output_pivoted){
     if(unpivoted_with_bands){
       not_pivoted <- res %>% select(-wvl) %>%
@@ -380,20 +381,20 @@ get_s2_data <- function(date_start,
   all_datasets <- lapply(product_paths,get_statistics_dataset)
   
   res <- dplyr::bind_rows(all_datasets) %>%
-    na.omit() %>%
-    rowwise() %>%
-    mutate(SAA = correct_azimuth_angle(SAA)) %>%
-    ungroup() %>%
-    rowwise() %>%
-    mutate(VAA = correct_azimuth_angle(VAA)) %>%
-    ungroup() %>%
-    rowwise() %>%
-    mutate(SZA = abs(SZA)) %>%
-    ungroup() %>%
-    rowwise() %>%
-    mutate(VZA = abs(VZA)) %>%
-    ungroup()
-  
+    na.omit() #%>%
+    # rowwise() %>%
+    # mutate(SAA = correct_azimuth_angle(SAA)) %>%
+    # ungroup() %>%
+    # rowwise() %>%
+    # mutate(VAA = correct_azimuth_angle(VAA)) %>%
+    # ungroup() %>%
+    # rowwise() %>%
+    # mutate(SZA = abs(SZA)) %>%
+    # ungroup() %>%
+    # rowwise() %>%
+    # mutate(VZA = abs(VZA)) %>%
+    # ungroup()
+    # 
   res2_long <- tidyr::pivot_longer(res, cols = starts_with("B"),
                                    names_to = "bands",
                                    values_to = "Ref",
@@ -595,20 +596,20 @@ get_PRISMA_data <- function(date_start,
   all_datasets <- lapply(product_paths,get_statistics_dataset)
   
   res <- dplyr::bind_rows(all_datasets) %>%
-    na.omit() %>%
-    rowwise() %>%
-    mutate(SAA = correct_azimuth_angle(SAA)) %>%
-    ungroup() %>%
-    rowwise() %>%
-    mutate(VAA = correct_azimuth_angle(VAA)) %>%
-    ungroup() %>%
-    rowwise() %>%
-    mutate(SZA = abs(SZA)) %>%
-    ungroup() %>%
-    rowwise() %>%
-    mutate(VZA = abs(VZA)) %>%
-    ungroup()
-  
+    na.omit() #%>%
+    # rowwise() %>%
+    # mutate(SAA = correct_azimuth_angle(SAA)) %>%
+    # ungroup() %>%
+    # rowwise() %>%
+    # mutate(VAA = correct_azimuth_angle(VAA)) %>%
+    # ungroup() %>%
+    # rowwise() %>%
+    # mutate(SZA = abs(SZA)) %>%
+    # ungroup() %>%
+    # rowwise() %>%
+    # mutate(VZA = abs(VZA)) %>%
+    # ungroup()
+    # 
   res2_long <- tidyr::pivot_longer(res, cols = starts_with("B"),
                                    names_to = "bands",
                                    values_to = "Ref",
@@ -878,7 +879,7 @@ matchup_function_to_S2 <- function(s2_data,
     #take a window of angles and mean
     
     convert_angles_for_geosphere <- med_view_angle_output %>%
-      mutate(VAA_hyp = ifelse(VAA_hyp > 180, 180-VAA_hyp, VAA_hyp )) 
+      mutate(VAA_hyp = ifelse(VAA_hyp > 180, VAA_hyp - 360, VAA_hyp )) 
     
     reconvert_for_us <- convert_angles_for_geosphere %>%
       filter(angle_diff < range_view_angle/2) %>%
@@ -898,7 +899,7 @@ matchup_function_to_S2 <- function(s2_data,
       unique() 
     
     view_angle_output <- reconvert_for_us %>% 
-      mutate(mean_VAA_hyp = ifelse(mean_VAA_hyp < 0, 180 - mean_VAA_hyp, mean_VAA_hyp))
+      mutate(mean_VAA_hyp = ifelse(mean_VAA_hyp < 0, 360 + mean_VAA_hyp, mean_VAA_hyp))
     
   }
   
@@ -1017,7 +1018,7 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
       
       #here we need to use the geosphere package to compute the centroid of a spherical polygon
       convert_angles_for_geosphere <- time_output %>%
-        mutate(SAA_hyp = ifelse(SAA_hyp > 180, 180-SAA_hyp, SAA_hyp )) 
+        mutate(SAA_hyp = ifelse(SAA_hyp > 180, SAA_hyp-360, SAA_hyp )) 
       
       reconvert_for_us <- convert_angles_for_geosphere %>%
         filter(time_diff < range_time_or_sun_angle/2*3600) %>%
@@ -1037,7 +1038,7 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
         unique() 
       
       time_or_sun_angle_output <- reconvert_for_us %>% 
-        mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp < 0, 180 - mean_SAA_hyp, mean_SAA_hyp))
+        mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp < 0, 360 + mean_SAA_hyp, mean_SAA_hyp))
       
       # if(weighted_mean){
       #   #create a weighted mean over times
@@ -1093,7 +1094,7 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
       #take a window of angles and mean
       
       convert_angles_for_geosphere <- sun_angle_output %>%
-        mutate(SAA_hyp = ifelse(SAA_hyp > 180, 180-SAA_hyp, SAA_hyp )) 
+        mutate(SAA_hyp = ifelse(SAA_hyp > 180, SAA_hyp-360, SAA_hyp )) 
       
       reconvert_for_us <- convert_angles_for_geosphere %>%
         filter(angle_diff < range_time_or_sun_angle/2) %>%
@@ -1113,7 +1114,7 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
         unique() 
       
       time_or_sun_angle_output <- reconvert_for_us %>% 
-        mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp < 0, 180 - mean_SAA_hyp, mean_SAA_hyp))
+        mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp < 0, 360 + mean_SAA_hyp, mean_SAA_hyp))
       
     }
   }
@@ -1135,7 +1136,7 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
     #take a window of angles and mean
     
     convert_angles_for_geosphere <- med_view_angle_output %>%
-      mutate(VAA_hyp = ifelse(VAA_hyp > 180, 180-VAA_hyp, VAA_hyp )) 
+      mutate(VAA_hyp = ifelse(VAA_hyp > 180, VAA_hyp-360, VAA_hyp )) 
     
     reconvert_for_us <- convert_angles_for_geosphere %>%
       filter(angle_diff < range_view_angle/2) %>%
@@ -1155,7 +1156,7 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
       unique() 
     
     view_angle_output <- reconvert_for_us %>% 
-      mutate(mean_VAA_hyp = ifelse(mean_VAA_hyp < 0, 180 - mean_VAA_hyp, mean_VAA_hyp))
+      mutate(mean_VAA_hyp = ifelse(mean_VAA_hyp < 0, 360 + mean_VAA_hyp, mean_VAA_hyp))
     
   }
   
