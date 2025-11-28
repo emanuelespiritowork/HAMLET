@@ -543,17 +543,6 @@ get_PRISMA_data <- function(date_start,
     
     statistics_dataset <- data.table::data.table()
     
-    if(grepl("OFFL",basename(product_path))){
-      OFFL_offset <- 5
-    }else{
-      OFFL_offset <- 0
-    }
-    if(grepl("STD",basename(product_path))){
-      STD_offset <- 4
-    }else{
-      STD_offset <- 0
-    }
-    
     read_angle_and_time <- read.csv(paste0(product_path,"/ATCOR/all_angles_file.csv"))
     
     statistics_pivoted <- statistics_dataset %>% mutate(bands = paste0("B",1:230)) %>%
@@ -566,6 +555,154 @@ get_PRISMA_data <- function(date_start,
       mutate(SZA = read_angle_and_time$sunzen) %>%
       mutate(VZA = read_angle_and_time$sensor_zenith) %>%
       mutate(VAA = read_angle_and_time$sensor_azimuth) %>%
+      data.table::as.data.table()
+    
+    #statistics_dataset$bands <- extract_names
+    
+    #statistics_dataset$Ref <- as.numeric(bands_statistics)
+    
+    #here we want to extract also SZA, SAA, VZA, VAA
+    
+    return(statistics_pivoted)
+  }
+  
+  all_datasets <- lapply(product_paths,get_statistics_dataset)
+  
+  res <- dplyr::bind_rows(all_datasets) %>%
+    na.omit() 
+  
+  res2_long <- tidyr::pivot_longer(res, cols = starts_with("B"),
+                                   names_to = "bands",
+                                   values_to = "Ref",
+                                   values_drop_na = TRUE) 
+  res2_long <-left_join (res2_long,bands_PRISMA)
+  
+  res <- res2_long
+  
+  if(!output_pivoted){
+    if(unpivoted_with_bands){
+      not_pivoted <- res %>% select(-wvl) %>%
+        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
+    }else{
+      not_pivoted <- res %>% select(-bands) %>%
+        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
+    }
+    
+    return(not_pivoted)
+  }
+  
+  return(res)
+  
+  
+}
+
+#get_EnMAP_data ----
+get_EnMAP_data <- function(date_start, 
+                            date_end,
+                           EnMAP_level_product = "L2A",
+                            hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
+                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #PRISMA data
+                            output_pivoted = T, #output to be pivoted (true) or not (false)
+                            unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
+                            bands_EnMAP = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/EnMAP_bands.csv")){
+  #here we need to choose the format of PRISMA data
+  library(tidytable)
+  year_start <- lubridate::year(as.Date(date_start))
+  year_end <- lubridate::year(as.Date(date_end))
+  years <- as.character(year_start:year_end)
+  repo_year_path <- paste0(repo_root_path, years, "/", EnMAP_level_product, "/")
+  
+  #now you enter in the folder where there are products
+  get_products_paths <- function(year_path){
+    list_of_products <- list.files(year_path, full.names = T)
+    list_of_dates <- as.Date(substring(basename(list_of_products),30,37),"%Y%m%d")
+    return(list_of_products[list_of_dates > date_start & list_of_dates < date_end])
+  }
+  
+  product_paths <- unlist(lapply(repo_year_path, get_products_paths))
+  
+  hypstar_point <- sf::st_read(hypstar_point_path)
+  
+  get_four_closest_pixels_statistic <- function(band){
+    #print(band)
+    #create a raster with a buffer of 10 m around the hypstar point
+    hypstar_point_buffer <- sf::st_buffer(hypstar_point,dist = 30)#30 is for 4 closest pixels
+    #sf::st_write(hypstar_point_buffer,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/hypstar_buffer.shp")
+    #band_raster <- invisible(terra::rast(band))
+    
+    four_closest_pixels <- NULL
+    four_closest_pixels <- tryCatch(t(terra::extract(band, hypstar_point_buffer, fun = "table", 
+                                                     touches = F, ID = F, weights = T)), 
+                                    error = function(e){NULL})
+    if(is.null(four_closest_pixels)){
+      output <- NA
+    }else{
+      value <- as.numeric(row.names(four_closest_pixels))
+      
+      four_closest_pixels <- data.table::as.data.table(four_closest_pixels)
+      
+      four_closest_pixels$value <- value
+      
+      names(four_closest_pixels) <- c("weight","value")
+      
+      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:4]#4 is 4 closest pixels
+      
+      #we do not return pixels because there are grid problems
+      
+      #statistics to return
+      output <- mean(four_closest_pixels$value, na.rm = T)
+    }
+    
+    return(output)
+  }
+  
+  get_statistics_dataset <- function(product_path){
+    library(tidytable)
+    
+    print(product_path)
+    
+    sensor_ID <- "EnMAP"
+    
+    image_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
+                             pattern = "\\.BSQ$")
+    
+    metadata_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
+                                pattern = "\\METADATA.XML$")
+    
+    image <- terra::rast(image_path)
+    
+    create_list_of_rasters <- function(band){
+      return(image[[band]])
+    }
+    
+    bands <- lapply(1:224, create_list_of_rasters)
+    
+    bands_statistics <- lapply(bands, get_four_closest_pixels_statistic)
+    
+    data <- XML::xmlParse(metadata_path)
+    
+    xml_data <- XML::xmlToList(data)
+    
+    sunElevationAngle <- as.numeric(xml_data[["specific"]][["sunElevationAngle"]][["center"]][["text"]])
+    sunAzimithAngle <- as.numeric(xml_data[["specific"]][["sunAzimuthAngle"]][["center"]][["text"]])
+    viewingZenithAngle <- as.numeric(xml_data[["specific"]][["viewingZenithAngle"]][["center"]][["text"]])
+    viewingAzimithAngle <- as.numeric(xml_data[["specific"]][["viewingAzimuthAngle"]][["center"]][["text"]])
+    
+    statistics_dataset <- data.table::data.table()
+    
+    statistics_pivoted <- statistics_dataset %>% mutate(bands = paste0("B",1:224)) %>%
+      mutate(Ref = as.numeric(bands_statistics)) %>%
+      mutate(date = as.Date(substring(basename(product_path),30,37),"%Y%m%d")) %>%
+      mutate(time = substring(basename(product_path),38,44)) %>% 
+      mutate(time = substring(time,2,8)) %>%
+      mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
+      mutate(time = substring(time,1,8)) %>%
+      pivot_wider(names_from = bands, values_from = Ref) %>%
+      mutate(sensor = sensor_ID) %>%
+      mutate(SAA = sunAzimithAngle) %>%
+      mutate(SZA = sunElevationAngle) %>%
+      mutate(VZA = viewingZenithAngle) %>%
+      mutate(VAA = viewingAzimithAngle) %>%
       data.table::as.data.table()
     
     #statistics_dataset$bands <- extract_names
