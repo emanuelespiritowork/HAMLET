@@ -224,7 +224,7 @@ hypstar_spectral_resampling_to_PRISMA <- function(dataset_res,
                                                   output_pivoted = T, #output to be pivoted (true) or not (false)
                                                   unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
                                                   bands_HYP = read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HYP.csv"),
-                                                  PRISMA_bands = paste0("B",1:151),#select which PRISMA_bands to choose (only hypstar bands for PRISMA)
+                                                  #PRISMA_bands = paste0("B",1:151),#select which PRISMA_bands to choose (only hypstar bands for PRISMA)
                                                   bands_PRISMA = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/PRISMA_bands.csv")){
   library(tidytable)
   
@@ -262,6 +262,67 @@ hypstar_spectral_resampling_to_PRISMA <- function(dataset_res,
                                    values_to = "Ref",
                                    values_drop_na = TRUE) 
   res2_long <-left_join (res2_long,bands_PRISMA)
+  file_resampled <- res2_long %>% na.omit()
+  
+  if(!output_pivoted){
+    if(unpivoted_with_bands){
+      not_pivoted <- file_resampled %>% select(-wvl) %>%
+        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
+    }else{
+      not_pivoted <- file_resampled %>% select(-bands) %>%
+        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
+    }
+    
+    return(not_pivoted)
+  }
+  
+  return(file_resampled)
+  
+}
+#hypstar_resampling_to_EnMAP ----
+hypstar_spectral_resampling_to_EnMAP <- function(dataset_res,
+                                                  input_pivoted = T, #dataset_res is pivoted (true) or not (false)
+                                                  output_pivoted = T, #output to be pivoted (true) or not (false)
+                                                  unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
+                                                  bands_HYP = read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HYP.csv"),
+                                                  #EnMAP_bands = paste0("B",1:166),#select which EnMAP_bands to choose (only hypstar bands for EnMAP)
+                                                  bands_EnMAP = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/EnMAP_bands.csv")){
+  library(tidytable)
+  
+  if(!input_pivoted){
+    res2_long <- tidyr::pivot_longer(dataset_res, cols = starts_with("B"),
+                                     names_to = "bands",
+                                     values_to = "Ref",
+                                     values_drop_na = TRUE) 
+    res2_long <-left_join (res2_long,bands_HYP)
+    dataset_res <- res2_long  
+  }
+  
+  source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/F01_Spectral_Resampling_V02.R")
+  
+  origin_band_centers <- sort(unique(bands_HYP$wvl))
+  
+  #Crea la matrice di ricampionamento
+  SFR_EnMAP <- suppressWarnings(SRF_adapter(origin_band_centers = origin_band_centers,
+                                             mode = "FWHM",
+                                             sensor = "ENMAP",
+                                             ref_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data"))
+  
+  #Eseguo il ricampionamento
+  unpivoted_res <- dataset_res %>% select(-wvl) %>%
+    tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
+  
+  band_variables <- names(unpivoted_res)[grepl(x = names(unpivoted_res), pattern = "^B.*")]
+  
+  file_resampled <- dataframe_resampler(total_df = unpivoted_res, 
+                                        band_variables = band_variables, #qui serve il nome che le bande hanno nel file originale
+                                        SRF = SFR_EnMAP) 
+  
+  res2_long <- tidyr::pivot_longer(file_resampled, cols = starts_with("B"),
+                                   names_to = "bands",
+                                   values_to = "Ref",
+                                   values_drop_na = TRUE) 
+  res2_long <-left_join (res2_long,bands_EnMAP)
   file_resampled <- res2_long %>% na.omit()
   
   if(!output_pivoted){
@@ -604,7 +665,7 @@ get_EnMAP_data <- function(date_start,
                             repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #PRISMA data
                             output_pivoted = T, #output to be pivoted (true) or not (false)
                             unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
-                            bands_EnMAP = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/EnMAP_bands.csv")){
+                            bands_EnMAP = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/ENMAP_bands.csv")){
   #here we need to choose the format of PRISMA data
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
@@ -669,6 +730,8 @@ get_EnMAP_data <- function(date_start,
     metadata_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
                                 pattern = "\\METADATA.XML$")
     
+    #metadata_path <- "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/2024/L2A/ENMAP01-____L2A-DT0000081830_20240714T104028Z_001_V010501_20241111T160454Z/ENMAP01-____L2A-DT0000081830_20240714T104028Z_001_V010501_20241111T160454Z-METADATA.XML"
+    
     image <- terra::rast(image_path)
     
     create_list_of_rasters <- function(band){
@@ -677,13 +740,17 @@ get_EnMAP_data <- function(date_start,
     
     bands <- lapply(1:224, create_list_of_rasters)
     
-    bands_statistics <- lapply(bands, get_four_closest_pixels_statistic)
+    bands_statistics <- suppressWarnings(lapply(bands, get_four_closest_pixels_statistic))
     
     data <- XML::xmlParse(metadata_path)
     
     xml_data <- XML::xmlToList(data)
     
     sunElevationAngle <- as.numeric(xml_data[["specific"]][["sunElevationAngle"]][["center"]][["text"]])
+    if(sunElevationAngle < 0){
+      print("Warning!. Elevation Angle less than zero. ")
+    }
+    sunZenithAngle <- 90-sunElevationAngle
     sunAzimithAngle <- as.numeric(xml_data[["specific"]][["sunAzimuthAngle"]][["center"]][["text"]])
     viewingZenithAngle <- as.numeric(xml_data[["specific"]][["viewingZenithAngle"]][["center"]][["text"]])
     viewingAzimithAngle <- as.numeric(xml_data[["specific"]][["viewingAzimuthAngle"]][["center"]][["text"]])
@@ -700,7 +767,7 @@ get_EnMAP_data <- function(date_start,
       pivot_wider(names_from = bands, values_from = Ref) %>%
       mutate(sensor = sensor_ID) %>%
       mutate(SAA = sunAzimithAngle) %>%
-      mutate(SZA = sunElevationAngle) %>%
+      mutate(SZA = sunZenithAngle) %>%
       mutate(VZA = viewingZenithAngle) %>%
       mutate(VAA = viewingAzimithAngle) %>%
       data.table::as.data.table()
@@ -716,14 +783,14 @@ get_EnMAP_data <- function(date_start,
   
   all_datasets <- lapply(product_paths,get_statistics_dataset)
   
-  res <- dplyr::bind_rows(all_datasets) %>%
-    na.omit() 
+  res <- dplyr::bind_rows(all_datasets) #%>%
+    #na.omit() 
   
   res2_long <- tidyr::pivot_longer(res, cols = starts_with("B"),
                                    names_to = "bands",
                                    values_to = "Ref",
                                    values_drop_na = TRUE) 
-  res2_long <-left_join (res2_long,bands_PRISMA)
+  res2_long <-left_join (res2_long,bands_EnMAP)
   
   res <- res2_long
   
@@ -956,6 +1023,151 @@ matchup_function_to_PRISMA <- function(PRISMA_data,
     hypstar_resampled <- hypstar_spectral_resampling_to_PRISMA(hypstar_data,
                                                                input_pivoted = T) %>%
       mutate(sensor = "PRISMA")
+    
+  }else{
+    hypstar_resampled <- hypstar_data
+  }
+  
+  #change col names not to confuse PRISMA B# and hypstar B#
+  PRISMA_col_renamed <- PRISMA_data %>% rename_with(~paste0(.,"_prs"),-c(bands,date,sensor,wvl)) 
+  
+  hypstar_col_renamed <- hypstar_resampled %>% rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor,wvl)) 
+  
+  
+  library(tidytable)
+  
+  
+  #DATE PROBLEM
+  if(only_same_date){
+    #only_same_date
+    date_output <- PRISMA_col_renamed %>% left_join(hypstar_col_renamed, by = c("bands","date","sensor","wvl")) %>%
+      na.omit()
+    
+  }else{
+    #closest date 
+    print("closest date will have the PRISMA date as 'date' variable")
+    PRISMA_with_date <- PRISMA_col_renamed %>% rename(date_prs = date)
+    hypstar_with_date <- hypstar_col_renamed %>% rename(date_hyp = date)
+    date_output <- PRISMA_with_date %>% left_join(hypstar_with_date, by = c("bands","sensor","wvl")) %>%
+      mutate(date_diff = abs(difftime(date_prs, date_hyp))) %>%
+      group_by(sensor,bands) %>%
+      mutate(lowest_date_diff = min(date_diff)) %>%
+      ungroup() %>%
+      filter(date_diff == lowest_date_diff) %>%
+      select(-date_diff,-lowest_date_diff) %>%
+      select(-date_hyp) %>%
+      rename(date = date_prs) %>%
+      na.omit()
+  }
+  
+  #SUN TIME OR SUN ANGLE PROBLEM
+  if(time_or_sun_angle){
+    
+    #create time variables and time difference
+    time_output <- date_output %>%
+      mutate(date_time_prs = as.POSIXct(paste(date,time_prs))) %>%
+      mutate(date_time_hyp = as.POSIXct(paste(date,time_hyp))) %>%
+      mutate(time_diff = abs(difftime(date_time_prs, date_time_hyp, units = "sec")))%>%
+      select(-date_time_prs,-date_time_hyp) 
+    
+    if(just_closest_time_or_sun_angle){
+      #only closest time
+      time_or_sun_angle_output <- time_or_sun_closest(time_output, time_or_angle_diff = T)
+    }else{
+      #take a window of times and mean
+      
+      time_or_sun_angle_output <- time_or_sun_mean(time_output,range_time_or_sun_angle,time_or_sun_angle)
+      
+    }
+  }else{
+    #create time variables and angle difference
+    sun_angle_output <- date_output %>%
+      mutate(angle_diff = 180/pi*acos( sin(SAA_prs*pi/180)*sin(SAA_hyp*pi/180) + cos(SAA_prs*pi/180) * cos(SAA_hyp*pi/180) * cos( SZA_prs*pi/180-SZA_hyp*pi/180 ))) 
+    #https://en.wikipedia.org/wiki/Great-circle_distance#cite_ref-2
+    
+    if(just_closest_time_or_sun_angle){
+      #only closest angle
+      time_or_sun_angle_output <- time_or_sun_closest(sun_angle_output, time_or_angle_diff = F)
+    }else{
+      #take a window of angles and mean
+      
+      time_or_sun_angle_output <- time_or_sun_mean(sun_angle_output,range_time_or_sun_angle,time_or_sun_angle)
+      
+    }
+  }
+  
+  #VIEW ANGLE PROBLEM
+  med_view_angle_output <- time_or_sun_angle_output %>%
+    mutate(angle_diff = 180/pi*acos( sin(VAA_prs*pi/180)*sin(VAA_hyp*pi/180) + cos(VAA_prs*pi/180) * cos(VAA_hyp*pi/180) * cos( VZA_prs*pi/180-VZA_hyp*pi/180 ))) 
+  #https://en.wikipedia.org/wiki/Great-circle_distance#cite_ref-2
+  
+  if(just_closest_view_angle){
+    #only closest angle
+    view_angle_output <- time_or_sun_closest(med_view_angle_output, time_or_angle_diff = F)
+    
+  }else{
+    #take a window of angles and mean
+    
+    view_angle_output <- view_mean(med_view_angle_output, range_view_angle)
+    
+  }
+  
+  return(view_angle_output)
+  
+}
+
+#matchup_function_to_EnMAP ----
+matchup_function_to_EnMAP <- function(EnMAP_data, 
+                                       hypstar_data,
+                                       
+                                       delVZA = c(""), #vector deleting View Zenith Angle inside hypstar dataset
+                                       delVAA = c(""), #vector deleting View Azimuth Angle inside hypstar datasets
+                                       
+                                       only_same_date = T,#only same date comparison accepted (true) or closest date (false)
+                                       
+                                       time_or_sun_angle = F, #consider time (true) or over sun azimuth and zenith angle (false) for filter
+                                       just_closest_time_or_sun_angle = T,#closest time/angle (true) or all times/angles in a range (false)
+                                       #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
+                                       range_time_or_sun_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
+                                       
+                                       just_closest_view_angle = T,#closest time/angle (true) or all times/angles in a range (false)
+                                       #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
+                                       range_view_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
+                                       
+                                       input_pivoted = T, #dataset_res is pivoted (true) or not (false) 
+                                       output_pivoted = T, #output to be pivoted (true) or not (false)
+                                       unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
+                                       bands_HYP = read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HYP.csv"),
+                                       bands_EnMAP = read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/EnMAP_bands.csv")){
+  
+  if(!input_pivoted){
+    res2_long <- tidyr::pivot_longer(EnMAP_data, cols = starts_with("B"),
+                                     names_to = "bands",
+                                     values_to = "Ref",
+                                     values_drop_na = TRUE) 
+    res2_long <-left_join(res2_long,bands_EnMAP)
+    PRISMA_data <- res2_long  
+    
+    res2_long <- tidyr::pivot_longer(hypstar_data, cols = starts_with("B"),
+                                     names_to = "bands",
+                                     values_to = "Ref",
+                                     values_drop_na = TRUE) 
+    res2_long <-left_join(res2_long,bands_HYP)
+    hypstar_data <- res2_long 
+  }
+  
+  #to remove specific sensor view angles
+  hypstar_data <- hypstar_data %>%     
+    filter(!(VZA %in% delVZA)) %>%
+    filter(!(VAA %in% delVAA))
+  
+  #check spectral resampling of hypstar
+  hypstar_bands_number <- length(unique(hypstar_data$bands))
+  if(hypstar_bands_number > 166){
+    print("mancato ricampionamento, viene eseguito")
+    hypstar_resampled <- hypstar_spectral_resampling_to_EnMAP(hypstar_data,
+                                                               input_pivoted = T) %>%
+      mutate(sensor = "EnMAP")
     
   }else{
     hypstar_resampled <- hypstar_data

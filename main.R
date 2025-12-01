@@ -4,11 +4,11 @@
 
 #load libraries 
 source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
-source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/F01_Spectral_Resampling_V02.R")
+#source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/F01_Spectral_Resampling_V02.R")
 
 #Parameter of selection:  
 library(tidytable)
-date_start <- "2024-07-25"
+date_start <- "2024-07-10"
 date_end <- "2024-08-31"
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/prova_codice_hypstar/"
 output_s2_file <- "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/s2_data.csv"
@@ -94,6 +94,13 @@ matchup_result_to_PRISMA <- matchup_function_to_PRISMA(PRISMA_data = PRISMA_data
                                                        output_pivoted = pivoted,
                                                        unpivoted_with_bands = unpivoted_with_bands,
                                                        delVZA = c(0))
+
+#get EnMAP data
+
+EnMAP_data <- get_EnMAP_data(date_start = date_start,
+                              date_end = date_end,
+                              output_pivoted = pivoted,
+                              unpivoted_with_bands = unpivoted_with_bands)
 
 ############################
 trasporre <- read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/s2_bands.csv", sep = ";")
