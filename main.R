@@ -102,6 +102,14 @@ EnMAP_data <- get_EnMAP_data(date_start = date_start,
                               output_pivoted = pivoted,
                               unpivoted_with_bands = unpivoted_with_bands)
 
+#matchup to EnMAP
+matchup_result_to_EnMAP <- matchup_function_to_EnMAP(EnMAP_data = EnMAP_data,
+                                                       hypstar_data = hypstar_data,
+                                                       input_pivoted = pivoted,
+                                                       output_pivoted = pivoted,
+                                                       unpivoted_with_bands = unpivoted_with_bands,
+                                                       delVZA = c(0))
+
 ############################
 trasporre <- read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/s2_bands.csv", sep = ";")
 aggiunta <- colnames(trasporre)[-1]

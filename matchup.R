@@ -1146,7 +1146,7 @@ matchup_function_to_EnMAP <- function(EnMAP_data,
                                      values_to = "Ref",
                                      values_drop_na = TRUE) 
     res2_long <-left_join(res2_long,bands_EnMAP)
-    PRISMA_data <- res2_long  
+    EnMAP_data <- res2_long  
     
     res2_long <- tidyr::pivot_longer(hypstar_data, cols = starts_with("B"),
                                      names_to = "bands",
@@ -1173,8 +1173,8 @@ matchup_function_to_EnMAP <- function(EnMAP_data,
     hypstar_resampled <- hypstar_data
   }
   
-  #change col names not to confuse PRISMA B# and hypstar B#
-  PRISMA_col_renamed <- PRISMA_data %>% rename_with(~paste0(.,"_prs"),-c(bands,date,sensor,wvl)) 
+  #change col names not to confuse EnMAP B# and hypstar B#
+  EnMAP_col_renamed <- EnMAP_data %>% rename_with(~paste0(.,"_enmap"),-c(bands,date,sensor,wvl)) 
   
   hypstar_col_renamed <- hypstar_resampled %>% rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor,wvl)) 
   
@@ -1185,23 +1185,23 @@ matchup_function_to_EnMAP <- function(EnMAP_data,
   #DATE PROBLEM
   if(only_same_date){
     #only_same_date
-    date_output <- PRISMA_col_renamed %>% left_join(hypstar_col_renamed, by = c("bands","date","sensor","wvl")) %>%
+    date_output <- EnMAP_col_renamed %>% left_join(hypstar_col_renamed, by = c("bands","date","sensor","wvl")) %>%
       na.omit()
     
   }else{
     #closest date 
-    print("closest date will have the PRISMA date as 'date' variable")
-    PRISMA_with_date <- PRISMA_col_renamed %>% rename(date_prs = date)
+    print("closest date will have the EnMAP date as 'date' variable")
+    EnMAP_with_date <- EnMAP_col_renamed %>% rename(date_enmap = date)
     hypstar_with_date <- hypstar_col_renamed %>% rename(date_hyp = date)
-    date_output <- PRISMA_with_date %>% left_join(hypstar_with_date, by = c("bands","sensor","wvl")) %>%
-      mutate(date_diff = abs(difftime(date_prs, date_hyp))) %>%
+    date_output <- EnMAP_with_date %>% left_join(hypstar_with_date, by = c("bands","sensor","wvl")) %>%
+      mutate(date_diff = abs(difftime(date_enmap, date_hyp))) %>%
       group_by(sensor,bands) %>%
       mutate(lowest_date_diff = min(date_diff)) %>%
       ungroup() %>%
       filter(date_diff == lowest_date_diff) %>%
       select(-date_diff,-lowest_date_diff) %>%
       select(-date_hyp) %>%
-      rename(date = date_prs) %>%
+      rename(date = date_enmap) %>%
       na.omit()
   }
   
@@ -1210,10 +1210,10 @@ matchup_function_to_EnMAP <- function(EnMAP_data,
     
     #create time variables and time difference
     time_output <- date_output %>%
-      mutate(date_time_prs = as.POSIXct(paste(date,time_prs))) %>%
+      mutate(date_time_enmap = as.POSIXct(paste(date,time_enmap))) %>%
       mutate(date_time_hyp = as.POSIXct(paste(date,time_hyp))) %>%
-      mutate(time_diff = abs(difftime(date_time_prs, date_time_hyp, units = "sec")))%>%
-      select(-date_time_prs,-date_time_hyp) 
+      mutate(time_diff = abs(difftime(date_time_enmap, date_time_hyp, units = "sec")))%>%
+      select(-date_time_enmap,-date_time_hyp) 
     
     if(just_closest_time_or_sun_angle){
       #only closest time
@@ -1227,7 +1227,7 @@ matchup_function_to_EnMAP <- function(EnMAP_data,
   }else{
     #create time variables and angle difference
     sun_angle_output <- date_output %>%
-      mutate(angle_diff = 180/pi*acos( sin(SAA_prs*pi/180)*sin(SAA_hyp*pi/180) + cos(SAA_prs*pi/180) * cos(SAA_hyp*pi/180) * cos( SZA_prs*pi/180-SZA_hyp*pi/180 ))) 
+      mutate(angle_diff = 180/pi*acos( sin(SAA_enmap*pi/180)*sin(SAA_hyp*pi/180) + cos(SAA_enmap*pi/180) * cos(SAA_hyp*pi/180) * cos( SZA_enmap*pi/180-SZA_hyp*pi/180 ))) 
     #https://en.wikipedia.org/wiki/Great-circle_distance#cite_ref-2
     
     if(just_closest_time_or_sun_angle){
@@ -1243,7 +1243,7 @@ matchup_function_to_EnMAP <- function(EnMAP_data,
   
   #VIEW ANGLE PROBLEM
   med_view_angle_output <- time_or_sun_angle_output %>%
-    mutate(angle_diff = 180/pi*acos( sin(VAA_prs*pi/180)*sin(VAA_hyp*pi/180) + cos(VAA_prs*pi/180) * cos(VAA_hyp*pi/180) * cos( VZA_prs*pi/180-VZA_hyp*pi/180 ))) 
+    mutate(angle_diff = 180/pi*acos( sin(VAA_enmap*pi/180)*sin(VAA_hyp*pi/180) + cos(VAA_enmap*pi/180) * cos(VAA_hyp*pi/180) * cos( VZA_enmap*pi/180-VZA_hyp*pi/180 ))) 
   #https://en.wikipedia.org/wiki/Great-circle_distance#cite_ref-2
   
   if(just_closest_view_angle){
