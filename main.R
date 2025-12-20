@@ -8,9 +8,10 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 
 #Parameter of selection:  
 library(tidytable)
-date_start <- "2024-07-10"
-date_end <- "2024-08-31"
+date_start <- "2024-09-27"
+date_end <- "2024-09-30"
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/prova_codice_hypstar/"
+processing_level_prs <- "Atcor_regrid"
 output_s2_file <- "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/s2_data.csv"
 output_hypstar_file <- "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/hypstar_data.csv"
 output_PRISMA_file <- "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/PRISMA_data.csv"
@@ -81,6 +82,7 @@ PRISMA_data <- get_PRISMA_data(date_start = date_start,
                                date_end = date_end,
                                output_pivoted = pivoted,
                                repo_root_path = repo_root_path_prs,
+                               processing_level = processing_level_prs,
                                unpivoted_with_bands = unpivoted_with_bands) 
 
 write.table(PRISMA_data, output_PRISMA_file, quote = F, sep = ";",
@@ -104,11 +106,54 @@ EnMAP_data <- get_EnMAP_data(date_start = date_start,
 
 #matchup to EnMAP
 matchup_result_to_EnMAP <- matchup_function_to_EnMAP(EnMAP_data = EnMAP_data,
-                                                       hypstar_data = hypstar_data,
-                                                       input_pivoted = pivoted,
-                                                       output_pivoted = pivoted,
-                                                       unpivoted_with_bands = unpivoted_with_bands,
-                                                       delVZA = c(0))
+                                                     hypstar_data = hypstar_data,
+                                                     input_pivoted = pivoted,
+                                                     output_pivoted = pivoted,
+                                                     unpivoted_with_bands = unpivoted_with_bands,
+                                                     time_or_sun_angle = T,
+                                                     just_closest_time_or_sun_angle = F,
+                                                     range_time_or_sun_angle = 1,
+                                                     just_closest_view_angle = F,
+                                                     range_view_angle = 360,
+                                                     delVZA = c(0))
+
+ggplot(data = matchup_result_to_EnMAP) + 
+  geom_line(aes(x = wvl, y = Ref_enmap), size = 1, color = "red") +
+  geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1, color = "blue") +
+  geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
+  ggtitle("EnMAP vs hypstar in 1hour_range_all_views")
+
+
+write.table(matchup_result_to_EnMAP,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupEnMAP_1hour_range_all_views.csv",
+            sep = ";", quote = F, row.names = F, append = F)
+
+matchup_result_to_EnMAP <- matchup_function_to_EnMAP(EnMAP_data = EnMAP_data,
+                                                     hypstar_data = hypstar_data,
+                                                     input_pivoted = pivoted,
+                                                     output_pivoted = pivoted,
+                                                     unpivoted_with_bands = unpivoted_with_bands,
+                                                     time_or_sun_angle = T,
+                                                     just_closest_time_or_sun_angle = T,
+                                                     range_time_or_sun_angle = NULL,
+                                                     just_closest_view_angle = F,
+                                                     range_view_angle = 30,
+                                                     delVZA = c(0))
+
+ggplot(data = matchup_result_to_EnMAP) + 
+  geom_line(aes(x = wvl, y = Ref_enmap), size = 1) +
+  geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1) +
+  geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
+  ggtitle("EnMAP vs hypstar in 30_deg_of_view_range_closest_time")
+
+write.table(matchup_result_to_EnMAP,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupEnMAP_30_deg_of_view_range_closest_time.csv",
+            sep = ";", quote = F, row.names = F, append = F)
+
+############################
+write.table(matchup_result_to_PRISMA,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupPRISMA_1hour_range.csv",
+            sep = ";", quote = F, row.names = F, append = F)
+
+write.table(matchup_result_to_EnMAP,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupEnMAP_1hour_range.csv",
+            sep = ";", quote = F, row.names = F, append = F)
 
 ############################
 trasporre <- read.csv("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/s2_bands_wavelenght/s2_bands.csv", sep = ";")
