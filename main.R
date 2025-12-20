@@ -90,12 +90,50 @@ write.table(PRISMA_data, output_PRISMA_file, quote = F, sep = ";",
 
 #matchup to PRISMA
 
-matchup_result_to_PRISMA <- matchup_function_to_PRISMA(PRISMA_data = PRISMA_data,
+matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
+                                             sat_name = "PRISMA",
                                                        hypstar_data = hypstar_data,
                                                        input_pivoted = pivoted,
                                                        output_pivoted = pivoted,
                                                        unpivoted_with_bands = unpivoted_with_bands,
+                                                       time_or_sun_angle = T,
+                                                       just_closest_time_or_sun_angle = F,
+                                                       range_time_or_sun_angle = 1,
+                                                       just_closest_view_angle = F,
+                                                       range_view_angle = 360,
                                                        delVZA = c(0))
+
+ggplot(data = matchup_result_to_PRISMA) + 
+  geom_line(aes(x = wvl, y = Ref_sat), size = 1, color = "green") +
+  geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1, color = "blue") +
+  geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
+  ggtitle("PRISMA vs hypstar in 1hour_range_all_views")
+
+write.table(matchup_result_to_PRISMA,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupPRISMA_1hour_range_all_views.csv",
+            sep = ";", quote = F, row.names = F, append = F)
+
+matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
+                                             sat_name = "PRISMA",
+                                                     hypstar_data = hypstar_data,
+                                                     input_pivoted = pivoted,
+                                                     output_pivoted = pivoted,
+                                                     unpivoted_with_bands = unpivoted_with_bands,
+                                                     time_or_sun_angle = T,
+                                                     just_closest_time_or_sun_angle = T,
+                                                     range_time_or_sun_angle = NULL,
+                                                     just_closest_view_angle = F,
+                                                     range_view_angle = 30,
+                                                     delVZA = c(0))
+
+ggplot(data = matchup_result_to_PRISMA) + 
+  geom_line(aes(x = wvl, y = Ref_sat), size = 1,color = "green") +
+  geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1,color = "blue") +
+  geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
+  ggtitle("PRISMA vs hypstar in 30_deg_of_view_range_closest_time")
+
+write.table(matchup_result_to_PRISMA,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupPRISMA_30_deg_of_view_range_closest_time.csv",
+            sep = ";", quote = F, row.names = F, append = F)
+
 
 #get EnMAP data
 
@@ -105,7 +143,8 @@ EnMAP_data <- get_EnMAP_data(date_start = date_start,
                               unpivoted_with_bands = unpivoted_with_bands)
 
 #matchup to EnMAP
-matchup_result_to_EnMAP <- matchup_function_to_EnMAP(EnMAP_data = EnMAP_data,
+matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
+                                            sat_name = "EnMAP",
                                                      hypstar_data = hypstar_data,
                                                      input_pivoted = pivoted,
                                                      output_pivoted = pivoted,
@@ -118,7 +157,7 @@ matchup_result_to_EnMAP <- matchup_function_to_EnMAP(EnMAP_data = EnMAP_data,
                                                      delVZA = c(0))
 
 ggplot(data = matchup_result_to_EnMAP) + 
-  geom_line(aes(x = wvl, y = Ref_enmap), size = 1, color = "red") +
+  geom_line(aes(x = wvl, y = Ref_sat), size = 1, color = "red") +
   geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1, color = "blue") +
   geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
   ggtitle("EnMAP vs hypstar in 1hour_range_all_views")
@@ -127,7 +166,8 @@ ggplot(data = matchup_result_to_EnMAP) +
 write.table(matchup_result_to_EnMAP,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupEnMAP_1hour_range_all_views.csv",
             sep = ";", quote = F, row.names = F, append = F)
 
-matchup_result_to_EnMAP <- matchup_function_to_EnMAP(EnMAP_data = EnMAP_data,
+matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
+                                            sat_name = "EnMAP",
                                                      hypstar_data = hypstar_data,
                                                      input_pivoted = pivoted,
                                                      output_pivoted = pivoted,
@@ -140,8 +180,8 @@ matchup_result_to_EnMAP <- matchup_function_to_EnMAP(EnMAP_data = EnMAP_data,
                                                      delVZA = c(0))
 
 ggplot(data = matchup_result_to_EnMAP) + 
-  geom_line(aes(x = wvl, y = Ref_enmap), size = 1) +
-  geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1) +
+  geom_line(aes(x = wvl, y = Ref_sat), size = 1,color = "red") +
+  geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1, color = "blue") +
   geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
   ggtitle("EnMAP vs hypstar in 30_deg_of_view_range_closest_time")
 
@@ -184,3 +224,9 @@ s2c <- s2c_fill %>% bind_rows(s2c)
 s2c <- s2c %>% mutate(band = as.numeric(band)) 
 write.table(s2c, "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data/SRF/S2C_SRF_13b.csv",
             sep = ",", quote = F, row.names = F)
+
+##############################
+Legenda
+Enmap color = "red"
+Hypstar color = "blue"
+PRISMA color = "green"
