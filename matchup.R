@@ -71,182 +71,11 @@ get_hypstar_data <- function(date_start,
     mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
     mutate(time = hms::as_hms(substring(time,1,8)))
   
-  if(!output_pivoted){
-    if(unpivoted_with_bands){
-      not_pivoted <- res %>% select(-wvl) %>%
-        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
-    }else{
-      not_pivoted <- res %>% select(-bands) %>%
-        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
-    }
-    
-    return(not_pivoted)
-  }
+  res <- pivoting_wider_function(output_pivoted = output_pivoted,
+                          unpivoted_with_bands = unpivoted_with_bands,
+                          df = res)
   
-  
-  return(scaled)
-}
-
-#hypstar_spectral_resampling_to_S2 ----
-hypstar_spectral_resampling_to_S2 <- function(dataset_res,
-                                        S2_sensor,#can be S2A,S2B,S2C
-                                        input_pivoted = T, #dataset_res is pivoted (true) or not (false) 
-                                        output_pivoted = T, #output to be pivoted (true) or not (false)
-                                        unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
-                                        bands_HYP = get_bands_station("HYPSTAR"),
-                                        S2_bands = c("B2","B3","B4","B5","B6","B7","B8","B8A","B11","B12"),
-                                        bands_S2 = get_bands_sat("S2")){
-  library(tidytable)
-  
-  dataset_res_pivot <- pivoting_longer_function(input_pivoted = input_pivoted,
-                                                df = dataset_res,
-                                                bands = bands_HYP)
-  
-  source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/F01_Spectral_Resampling_V02.R")
-  
-  origin_band_centers <- sort(unique(bands_HYP$wvl))
-  
-  #Crea la matrice di ricampionamento
-  SFR_S2 <- suppressWarnings(SRF_adapter(origin_band_centers = origin_band_centers,
-                        mode = "SRF",
-                        sensor = as.character(S2_sensor),
-                        ref_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data")[,S2_bands])
-  
-  #Eseguo il ricampionamento
-  unpivoted_res <- dataset_res_pivot %>% select(-wvl) %>%
-    tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
-  
-  band_variables <- names(unpivoted_res)[grepl(x = names(unpivoted_res), pattern = "^B.*")]
-  
-  file_resampled <- dataframe_resampler(total_df = unpivoted_res, 
-                                        band_variables = band_variables, #qui serve il nome che le bande hanno nel file originale
-                                        SRF = SFR_S2) 
-  
-  file_resampled <- pivoting_longer_function(input_pivoted = F,
-                                             df = file_resampled,
-                                             bands = bands_S2)
-  
-  if(!output_pivoted){
-    if(unpivoted_with_bands){
-      not_pivoted <- file_resampled %>% select(-wvl) %>%
-        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
-    }else{
-      not_pivoted <- file_resampled %>% select(-bands) %>%
-        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
-    }
-    
-    return(not_pivoted)
-  }
-  
-  return(file_resampled)
-  
-}
-
-#hypstar_resampling_to_PRISMA ----
-hypstar_spectral_resampling_to_PRISMA <- function(dataset_res,
-                                                  input_pivoted = T, #dataset_res is pivoted (true) or not (false)
-                                                  output_pivoted = T, #output to be pivoted (true) or not (false)
-                                                  unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
-                                                  bands_HYP = get_bands_station("HYPSTAR"),
-                                                  #PRISMA_bands = paste0("B",1:151),#select which PRISMA_bands to choose (only hypstar bands for PRISMA)
-                                                  bands_PRISMA = get_bands_sat("PRISMA")){
-  library(tidytable)
-  
-  dataset_res_pivot <- pivoting_longer_function(input_pivoted = input_pivoted,
-                                                  df = dataset_res,
-                                                  bands = bands_HYP)
-  
-  source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/F01_Spectral_Resampling_V02.R")
-  
-  origin_band_centers <- sort(unique(bands_HYP$wvl))
-  
-  #Crea la matrice di ricampionamento
-  SFR_PRISMA <- suppressWarnings(SRF_adapter(origin_band_centers = origin_band_centers,
-                            mode = "FWHM",
-                            sensor = "PRISMA",
-                            ref_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data"))
-  
-  #Eseguo il ricampionamento
-  unpivoted_res <- dataset_res_pivot %>% select(-wvl) %>%
-    tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
-  
-  band_variables <- names(unpivoted_res)[grepl(x = names(unpivoted_res), pattern = "^B.*")]
-  
-  file_resampled <- dataframe_resampler(total_df = unpivoted_res, 
-                                        band_variables = band_variables, #qui serve il nome che le bande hanno nel file originale
-                                        SRF = SFR_PRISMA) 
-  
-  file_resampled <- pivoting_longer_function(input_pivoted = F,
-                                             df = file_resampled,
-                                             bands = bands_PRISMA) 
-  
-  if(!output_pivoted){
-    if(unpivoted_with_bands){
-      not_pivoted <- file_resampled %>% select(-wvl) %>%
-        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
-    }else{
-      not_pivoted <- file_resampled %>% select(-bands) %>%
-        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
-    }
-    
-    return(not_pivoted)
-  }
-  
-  return(file_resampled)
-  
-}
-#hypstar_resampling_to_EnMAP ----
-hypstar_spectral_resampling_to_EnMAP <- function(dataset_res,
-                                                  input_pivoted = T, #dataset_res is pivoted (true) or not (false)
-                                                  output_pivoted = T, #output to be pivoted (true) or not (false)
-                                                  unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
-                                                  bands_HYP = get_bands_station("HYPSTAR"),
-                                                  #EnMAP_bands = paste0("B",1:166),#select which EnMAP_bands to choose (only hypstar bands for EnMAP)
-                                                  bands_EnMAP = get_bands_sat("EnMAP")){
-  library(tidytable)
-  
-  dataset_res_pivot <- pivoting_longer_function(input_pivoted = input_pivoted,
-                                                  df = dataset_res,
-                                                  bands = bands_HYP)
-  
-  source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/F01_Spectral_Resampling_V02.R")
-  
-  origin_band_centers <- sort(unique(bands_HYP$wvl))
-  
-  #Crea la matrice di ricampionamento
-  SFR_EnMAP <- suppressWarnings(SRF_adapter(origin_band_centers = origin_band_centers,
-                                             mode = "FWHM",
-                                             sensor = "ENMAP",
-                                             ref_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data"))
-  
-  #Eseguo il ricampionamento
-  unpivoted_res <- dataset_res_pivot %>% select(-wvl) %>%
-    tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
-  
-  band_variables <- names(unpivoted_res)[grepl(x = names(unpivoted_res), pattern = "^B.*")]
-  
-  file_resampled <- dataframe_resampler(total_df = unpivoted_res, 
-                                        band_variables = band_variables, #qui serve il nome che le bande hanno nel file originale
-                                        SRF = SFR_EnMAP) 
-  
-  file_resampled <- pivoting_longer_function(input_pivoted = F,
-                                               df = file_resampled,
-                                               bands = bands_EnMAP)
-  
-  if(!output_pivoted){
-    if(unpivoted_with_bands){
-      not_pivoted <- file_resampled %>% select(-wvl) %>%
-        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
-    }else{
-      not_pivoted <- file_resampled %>% select(-bands) %>%
-        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
-    }
-    
-    return(not_pivoted)
-  }
-  
-  return(file_resampled)
-  
+  return(res)
 }
 
 #hypstar_spectral_resampling ----
@@ -286,13 +115,14 @@ hypstar_spectral_resampling <- function(dataset_res,
   
   #Crea la matrice di ricampionamento
   SRF_sat <- suppressWarnings(SRF_adapter(origin_band_centers = origin_band_centers,
-                                            mode = sensor_mode,
-                                            sensor = sat_sensor,
+                                            mode = as.character(sensor_mode),
+                                            sensor = as.character(sat_sensor),
                                             ref_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/config_data")[,which_bands])
   
   #Eseguo il ricampionamento
-  unpivoted_res <- dataset_res_pivot %>% select(-wvl) %>%
-    tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
+  unpivoted_res <- pivoting_wider_function(unpivoted_with_bands = T,
+                          output_pivoted = F,
+                          df = dataset_res_pivot)
   
   band_variables <- names(unpivoted_res)[grepl(x = names(unpivoted_res), pattern = "^B.*")]
   
@@ -415,18 +245,9 @@ get_s2_data <- function(date_start,
                                     df = res,
                                     bands = bands_S2)
   
-  if(!output_pivoted){
-    if(unpivoted_with_bands){
-      not_pivoted <- res %>% select(-wvl) %>%
-        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
-    }else{
-      not_pivoted <- res %>% select(-bands) %>%
-        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
-    }
-    
-    return(not_pivoted)
-  }
-
+  res <- pivoting_wider_function(output_pivoted = output_pivoted,
+                          unpivoted_with_bands = unpivoted_with_bands,
+                          df = res)
   return(res)
 }
 
@@ -557,21 +378,10 @@ get_PRISMA_data <- function(date_start,
                                     df = res,
                                     bands = bands_PRISMA) %>% mutate(Ref = Ref/10000)
   
-  if(!output_pivoted){
-    if(unpivoted_with_bands){
-      not_pivoted <- res %>% select(-wvl) %>%
-        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
-    }else{
-      not_pivoted <- res %>% select(-bands) %>%
-        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
-    }
-    
-    return(not_pivoted)
-  }
-  
+  res <- pivoting_wider_function(output_pivoted = output_pivoted,
+                          unpivoted_with_bands = unpivoted_with_bands,
+                          df = res)
   return(res)
-  
-  
 }
 
 #get_EnMAP_data ----
@@ -707,21 +517,11 @@ get_EnMAP_data <- function(date_start,
                                     df = res,
                                     bands = bands_EnMAP)
   
-  if(!output_pivoted){
-    if(unpivoted_with_bands){
-      not_pivoted <- res %>% select(-wvl) %>%
-        tidyr::pivot_wider(names_from = "bands", values_from = "Ref")
-    }else{
-      not_pivoted <- res %>% select(-bands) %>%
-        tidyr::pivot_wider(names_from = "wvl", values_from = "Ref")
-    }
-    
-    return(not_pivoted)
-  }
-  
+  res <- pivoting_wider_function(output_pivoted = output_pivoted,
+                          unpivoted_with_bands = unpivoted_with_bands,
+                          df = res)
+
   return(res)
-  
-  
 }
 
 #matchup_function ----
@@ -1316,8 +1116,8 @@ get_bands_sat <- function(sat_name){
 }
 
 #get_bands_station ----
-get_bands_station <- function(hyp_name){
-  if(hyp_name == "HYPSTAR"){
+get_bands_station <- function(station_name){
+  if(station_name == "HYPSTAR"){
     bands_csv <- read.csv("//10.0.1.243/projects/2023_HyperNet-POP/6-script/bands_HYP.csv")
   }else{
     bands_csv <- NULL
@@ -1325,5 +1125,36 @@ get_bands_station <- function(hyp_name){
   return(bands_csv)
 }
 
-
+#plot_matchup ----
+plot_matchup <- function(matchup_result,
+                         color_station = "blue",
+                         color_sat_EnMAP = "red",
+                         color_sat_PRISMA = "green",
+                         color_sat_S2 = "brown",
+                         title = "Titolo di prova",
+                         save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/plot_generico.png"){
+  library(ggplot2)
+  
+  sat_name <- unique(matchup_result$sensor)
+  
+  if(sat_name == "PRISMA"){
+    sat_color <- color_sat_PRISMA
+  }
+  if(sat_name == "EnMAP"){
+    sat_color <- color_sat_EnMAP
+  }
+  if(sat_name %in% c("S2A","S2B","S2C","S2")){
+    sat_color <- color_sat_S2
+  }
+  
+  plot <- ggplot(data = matchup_result) + 
+    geom_line(aes(x = wvl, y = Ref_sat), size = 1, color = sat_color) +
+    geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1, color = color_station) +
+    geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
+    ggtitle(title)
+  
+  ggsave(plot = plot, filenam = save_path)
+  
+  return(plot)
+}
 

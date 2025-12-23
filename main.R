@@ -78,7 +78,7 @@ write.table(PRISMA_data, output_PRISMA_file, quote = F, sep = ";",
 
 #matchup to PRISMA
 
-matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
+matchup_result_to_PRISMA_1hour_range_all_views <- matchup_function(sat_data = PRISMA_data,
                                              sat_name = "PRISMA",
                                                        hypstar_data = hypstar_data,
                                                        input_pivoted = pivoted,
@@ -90,17 +90,14 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                                        just_closest_view_angle = F,
                                                        range_view_angle = 360,
                                                        delVZA = c(0))
-
-ggplot(data = matchup_result_to_PRISMA) + 
-  geom_line(aes(x = wvl, y = Ref_sat), size = 1, color = "green") +
-  geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1, color = "blue") +
-  geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
-  ggtitle("PRISMA vs hypstar in 1hour_range_all_views")
+plot_PRISMA_1hour_range_all_views <- plot_matchup(matchup_result_to_PRISMA_1hour_range_all_views,
+                     title = "PRISMA vs hypstar in 1hour_range_all_views",
+                     save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/matchup_result_to_PRISMA_1hour_range_all_views.png")
 
 write.table(matchup_result_to_PRISMA,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupPRISMA_1hour_range_all_views.csv",
             sep = ";", quote = F, row.names = F, append = F)
 
-matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
+matchup_result_to_PRISMA_30_deg_of_view_range_closest_time <- matchup_function(sat_data = PRISMA_data,
                                              sat_name = "PRISMA",
                                                      hypstar_data = hypstar_data,
                                                      input_pivoted = pivoted,
@@ -113,11 +110,9 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                                      range_view_angle = 30,
                                                      delVZA = c(0))
 
-ggplot(data = matchup_result_to_PRISMA) + 
-  geom_line(aes(x = wvl, y = Ref_sat), size = 1,color = "green") +
-  geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1,color = "blue") +
-  geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
-  ggtitle("PRISMA vs hypstar in 30_deg_of_view_range_closest_time")
+plot_PRISMA_30_deg_of_view_range_closest_time <- plot_matchup(matchup_result_to_PRISMA_30_deg_of_view_range_closest_time,
+                                                  title = "PRISMA vs hypstar in 30_deg_of_view_range_closest_time",
+                                                  save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/matchup_result_to_PRISMA_30_deg_of_view_range_closest_time.png")
 
 write.table(matchup_result_to_PRISMA,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupPRISMA_30_deg_of_view_range_closest_time.csv",
             sep = ";", quote = F, row.names = F, append = F)
@@ -131,7 +126,7 @@ EnMAP_data <- get_EnMAP_data(date_start = date_start,
                               unpivoted_with_bands = unpivoted_with_bands)
 
 #matchup to EnMAP
-matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
+matchup_result_to_EnMAP_1hour_range_all_views <- matchup_function(sat_data = EnMAP_data,
                                             sat_name = "EnMAP",
                                                      hypstar_data = hypstar_data,
                                                      input_pivoted = pivoted,
@@ -144,17 +139,15 @@ matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                                      range_view_angle = 360,
                                                      delVZA = c(0))
 
-ggplot(data = matchup_result_to_EnMAP) + 
-  geom_line(aes(x = wvl, y = Ref_sat), size = 1, color = "red") +
-  geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1, color = "blue") +
-  geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
-  ggtitle("EnMAP vs hypstar in 1hour_range_all_views")
+plot_EnMAP_1hour_range_all_views <- plot_matchup(matchup_result_to_EnMAP_1hour_range_all_views,
+                                                  title = "EnMAP vs hypstar in 1hour_range_all_views",
+                                                  save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/matchup_result_to_EnMAP_1hour_range_all_views.png")
 
 
 write.table(matchup_result_to_EnMAP,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupEnMAP_1hour_range_all_views.csv",
             sep = ";", quote = F, row.names = F, append = F)
 
-matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
+matchup_result_to_EnMAP_30_deg_of_view_range_closest_time <- matchup_function(sat_data = EnMAP_data,
                                             sat_name = "EnMAP",
                                                      hypstar_data = hypstar_data,
                                                      input_pivoted = pivoted,
@@ -167,11 +160,9 @@ matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                                      range_view_angle = 30,
                                                      delVZA = c(0))
 
-ggplot(data = matchup_result_to_EnMAP) + 
-  geom_line(aes(x = wvl, y = Ref_sat), size = 1,color = "red") +
-  geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1, color = "blue") +
-  geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
-  ggtitle("EnMAP vs hypstar in 30_deg_of_view_range_closest_time")
+plot_EnMAP_30_deg_of_view_range_closest_time <- plot_matchup(matchup_result_to_EnMAP_30_deg_of_view_range_closest_time,
+                                                              title = "EnMAP vs hypstar in 30_deg_of_view_range_closest_time",
+                                                              save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/matchup_result_to_EnMAP_30_deg_of_view_range_closest_time.png")
 
 write.table(matchup_result_to_EnMAP,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Earsel/matchupEnMAP_30_deg_of_view_range_closest_time.csv",
             sep = ";", quote = F, row.names = F, append = F)
