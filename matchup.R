@@ -590,81 +590,7 @@ matchup_function <- function(sat_data,
 }
 
 
-#view_mean_obs ----
-
-view_mean_obs <- function(med_view_angle_output, range_view_angle){
-  convert_angles_for_geosphere <- med_view_angle_output %>%
-    mutate(VAA_hyp = ifelse(VAA_hyp > 180, VAA_hyp-360, VAA_hyp )) 
-  
-  reconvert_for_us <- convert_angles_for_geosphere %>%
-    filter(angle_diff < range_view_angle/2) %>%
-    select(-angle_diff) %>%
-    #select(-time_hyp) %>% #SERVE?
-    group_by(date,bands,wvl,sensor) %>%
-    mutate(count = row_number()) %>%
-    select(-tos_sd_Ref_hyp) %>% #in futuro dobbiamo considerarla
-    mutate(v_mean_Ref_hyp = mean(tos_mean_Ref_hyp)) %>%
-    mutate(v_sd_Ref_hyp = sd(tos_mean_Ref_hyp)) %>%
-    mutate(validation_for_VZA_hyp = abs(max(VZA_hyp) - min(VZA_hyp)) > 0) %>%
-    mutate(validation_for_VAA_hyp = abs(max(VAA_hyp) - min(VAA_hyp)) > 0) %>% 
-    mutate(validation = validation_for_VZA_hyp & validation_for_VAA_hyp & count > 2) %>%
-    select(-validation_for_VZA_hyp,-validation_for_VAA_hyp)
-  
-  reconvert_for_us_T <- reconvert_for_us %>%
-    filter(validation) %>%
-    select(-count) %>%
-    select(-tos_mean_Ref_hyp) %>%
-    select(-VZA_hyp) %>%
-    select(-VAA_hyp) %>%
-    ungroup() %>% 
-    unique()
-  
-  if(nrow(reconvert_for_us_T) > 0){
-    reconvert_for_us_T <- reconvert_for_us %>%
-      filter(validation) %>%
-      mutate(mean_VZA_hyp = geosphere::centroid(cbind(VAA_hyp,VZA_hyp)[contoureR::orderPoints(cbind(VAA_hyp,VZA_hyp)[,1], cbind(VAA_hyp,VZA_hyp)[,2]),])[2]) %>%#before passing to geosphere we need to transform into all positive data
-      mutate(mean_VAA_hyp = geosphere::centroid(cbind(VAA_hyp,VZA_hyp)[contoureR::orderPoints(cbind(VAA_hyp,VZA_hyp)[,1], cbind(VAA_hyp,VZA_hyp)[,2]),])[1]) %>%
-      ungroup() %>%
-      select(-count) %>%
-      select(-tos_mean_Ref_hyp) %>%
-      select(-VZA_hyp) %>%
-      select(-VAA_hyp) %>%
-      unique() 
-  }
-  
-  reconvert_for_us_F <- reconvert_for_us %>%
-    filter(!validation) %>%
-    select(-count) %>%
-    select(-tos_mean_Ref_hyp) %>%
-    select(-VZA_hyp) %>%
-    select(-VAA_hyp) %>%
-    ungroup() %>% 
-    unique()
-  
-  if(nrow(reconvert_for_us_F) > 0){
-    reconvert_for_us_F <- reconvert_for_us %>%
-      filter(!validation) %>%
-      mutate(mean_VZA_hyp = mean(VZA_hyp)) %>%
-      mutate(mean_VAA_hyp = mean(VAA_hyp)) %>%
-      ungroup() %>%
-      select(-count) %>%
-      select(-tos_mean_Ref_hyp) %>%
-      select(-VZA_hyp) %>%
-      select(-VAA_hyp)
-  }
-
-  
-  reconvert_for_us <- reconvert_for_us_T %>% bind_rows(reconvert_for_us_F) %>%
-    select(-validation)
-  
-  view_angle_output <- reconvert_for_us %>% 
-    mutate(mean_VAA_hyp = ifelse(mean_VAA_hyp < 0, 360 + mean_VAA_hyp, mean_VAA_hyp))
-  
-  return(view_angle_output)
-}
-
 #view_mean ----
-
 view_mean <- function(med_view_angle_output, range_view_angle){
   #filtro sugli angoli
   filtered <- med_view_angle_output %>%
@@ -735,8 +661,15 @@ view_mean <- function(med_view_angle_output, range_view_angle){
   return(view_angle_output)
 }
 
+#view_closest ----
+
 #time_or_sun_closest ----
 time_or_sun_closest <- function(med_output, time_or_angle_diff){
+  
+  cols_sd <- c(sd_hyp = "NA")
+    
+  cols <- c(operations = "NA")
+  
   if(time_or_angle_diff){
     closest_output <- med_output %>% 
       group_by(date,bands,sensor,wvl) %>%
@@ -753,102 +686,32 @@ time_or_sun_closest <- function(med_output, time_or_angle_diff){
       select(-angle_diff,-lowest_angle_diff) 
   }
   
-  return(closest_output)
+  closest_output_check <- closest_output %>%
+    tibble::add_column(!!!cols_sd[!names(cols_sd) %in% names(.)]) %>%
+    mutate(sd_hyp = ifelse(is.na(sd_hyp),0,sd_hyp)) %>% #when the time is the closest there is no standard deviation
+    group_by(date,sensor,bands,wvl) %>% #qui c'è il problema che scegliendo l'orario più vicino ci possono essere due sun angles differenti che ci portiamo dietro 
+    mutate(SZA_hyp = mean(SZA_hyp)) %>% #se anche lo fa quando c'è View non dovrebbe essere un problema ma meglio separarle
+    mutate(SAA_hyp = mean(SAA_hyp)) %>%
+    ungroup() %>%
+    unique() %>% 
+    tibble::add_column(!!!cols[!names(cols) %in% names(.)]) %>%
+    mutate(operations = paste(operations,"closest_time",sep=";") ) 
+  
+  return(closest_output_check)
 }
 
-#time_or_sun_mean_obs ----
-time_or_sun_mean_obs <- function(med_output, range_time_or_sun_angle, time_or_sun_angle){
-  convert_angles_for_geosphere <- med_output %>%
-    mutate(SAA_hyp = ifelse(SAA_hyp > 180, SAA_hyp-360, SAA_hyp )) 
-  
-  if(time_or_sun_angle){
-    filtered <- convert_angles_for_geosphere %>%
-      filter(time_diff < range_time_or_sun_angle/2*3600) %>%
-      select(-time_diff) 
-  }else{
-    filtered <- convert_angles_for_geosphere %>%
-      filter(angle_diff < range_time_or_sun_angle/2) %>%
-      select(-angle_diff) 
-  }
-  
-  reconvert_for_us <- filtered %>%
-    group_by(date,bands,sensor,wvl,VZA_hyp,VAA_hyp) %>%
-    mutate(count = row_number()) %>%
-    mutate(count_max = max(count)) %>%
-    mutate(tos_mean_Ref_hyp = mean(Ref_hyp)) %>%
-    mutate(tos_sd_Ref_hyp = sd(Ref_hyp)) %>%
-    mutate(tos_sd_Ref_hyp = ifelse(is.na(tos_sd_Ref_hyp),0,tos_sd_Ref_hyp))%>%
-    #mutate(mean_time_hyp = hms::as_hms(mean(as.POSIXct(paste(date,time_hyp))))) %>%
-    mutate(mean_time_hyp = mean(time_hyp)) %>%
-    select(-time_hyp) %>%
-    mutate(validation_for_SZA_hyp = abs(max(SZA_hyp) - min(SZA_hyp)) > 0) %>%
-    mutate(validation_for_SAA_hyp = abs(max(SAA_hyp) - min(SAA_hyp)) > 0) %>% 
-    mutate(validation = validation_for_SZA_hyp & validation_for_SAA_hyp & count_max > 2) %>%
-    select(-validation_for_SZA_hyp,-validation_for_SAA_hyp) 
-  
-  reconvert_for_us_T <- reconvert_for_us %>%
-    filter(validation) %>% 
-    select(-count) %>%
-    select(-Ref_hyp) %>%
-    select(-SZA_hyp) %>%
-    select(-SAA_hyp) %>%
-    ungroup() %>% 
-    unique()
-  
-  if(nrow(reconvert_for_us_T)>0){
-    reconvert_for_us_T <- reconvert_for_us %>%
-      filter(validation) %>%
-      mutate(mean_SZA_hyp = geosphere::centroid(cbind(SAA_hyp,SZA_hyp)[contoureR::orderPoints(cbind(SAA_hyp,SZA_hyp)[,1], cbind(SAA_hyp,SZA_hyp)[,2]),])[2]) %>%#before passing to geosphere we need to transform into all positive data
-      mutate(mean_SAA_hyp = geosphere::centroid(cbind(SAA_hyp,SZA_hyp)[contoureR::orderPoints(cbind(SAA_hyp,SZA_hyp)[,1], cbind(SAA_hyp,SZA_hyp)[,2]),])[1]) %>%
-      ungroup() %>%
-      select(-count) %>%
-      select(-Ref_hyp) %>%
-      select(-SZA_hyp) %>%
-      select(-SAA_hyp) %>%
-      unique() 
-  }
-  
-  reconvert_for_us_F <- reconvert_for_us %>%
-    filter(!validation) %>% 
-    select(-count) %>%
-    select(-Ref_hyp) %>%
-    select(-SZA_hyp) %>%
-    select(-SAA_hyp) %>%
-    ungroup() %>% 
-    unique()
-  
-  if(nrow(reconvert_for_us_F)>0){
-    reconvert_for_us_F <- reconvert_for_us %>%
-      filter(!validation) %>%
-      mutate(SAA_hyp = ifelse(SAA_hyp < 0, 360 + SAA_hyp, SAA_hyp)) %>%
-      mutate(mean_SZA_hyp = mean(SZA_hyp)) %>%
-      mutate(mean_SAA_hyp = mean(SAA_hyp)) %>%
-      mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp > 180, mean_SAA_hyp-360, mean_SAA_hyp )) %>%
-      ungroup() %>%
-      select(-count) %>%
-      select(-Ref_hyp) %>%
-      select(-SZA_hyp) %>%
-      select(-SAA_hyp) %>%
-      unique() 
-  }
-  
-  reconvert_for_us <- reconvert_for_us_T %>% bind_rows(reconvert_for_us_F) %>%
-    select(-validation)
-  
-  time_or_sun_angle_output <- reconvert_for_us %>% 
-    mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp < 0, 360 + mean_SAA_hyp, mean_SAA_hyp))
-  
-  return(time_or_sun_angle_output)
-}
 #time_or_sun_mean ----
 time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_angle){
   
+  cols <- c(operations = "")
   #filtro
   if(time_or_sun_angle){
+    write_ops <- paste0("average_in_time_window_of_",range_time_or_sun_angle,"hours")
     filtered <- med_output %>%
       filter(time_diff < range_time_or_sun_angle/2*3600) %>%
       select(-time_diff) 
   }else{
+    write_ops <- paste0("average_in_sun_angle_window_of",range_time_or_sun_angle,"degrees")
     filtered <- med_output %>%
       filter(angle_diff < range_time_or_sun_angle/2) %>%
       select(-angle_diff) 
@@ -859,15 +722,15 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
     mutate(count = row_number()) %>%
     mutate(count_max = max(count)) %>%
     select(-count) %>%
-    mutate(tos_mean_Ref_hyp = mean(Ref_hyp)) %>%
-    mutate(tos_sd_Ref_hyp = sd(Ref_hyp)) %>%
+    #fin qui abbiamo Ref_hyp ma non sd_hyp quindi da Ref_hyp calcolo la media e la sd
+    mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
+    mutate(sd_hyp = sd(Ref_hyp)) %>%
     select(-Ref_hyp) %>%
-    mutate(tos_sd_Ref_hyp = ifelse(is.na(tos_sd_Ref_hyp),0,tos_sd_Ref_hyp))
+    rename(Ref_hyp = mean_Ref_hyp) %>%
+    mutate(sd_hyp = ifelse(is.na(sd_hyp),0,sd_hyp)) %>%
+    mutate(time_hyp = mean(time_hyp))
   
   valid_angle <- ref_averaged %>%
-    #mutate(mean_time_hyp = hms::as_hms(mean(as.POSIXct(paste(date,time_hyp))))) %>%
-    mutate(mean_time_hyp = mean(time_hyp)) %>%
-    select(-time_hyp) %>%
     mutate(validation_for_SZA_hyp = abs(max(SZA_hyp) - min(SZA_hyp)) > 0) %>%
     mutate(validation_for_SAA_hyp = abs(max(SAA_hyp) - min(SAA_hyp)) > 0) %>% 
     mutate(validation = validation_for_SZA_hyp & validation_for_SAA_hyp & count_max > 2) %>%
@@ -875,8 +738,6 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
   
   valid_angle_T <- valid_angle %>%
     filter(validation) %>% 
-    select(-SZA_hyp) %>%
-    select(-SAA_hyp) %>%
     ungroup() %>% 
     unique()
   
@@ -893,13 +754,13 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
       ungroup() %>%
       select(-SZA_hyp) %>%
       select(-SAA_hyp) %>%
+      rename(SZA_hyp = mean_SZA_hyp) %>%
+      rename(SAA_hyp = mean_SAA_hyp) %>%
       unique() 
   }
   
   valid_angle_F <- valid_angle %>%
     filter(!validation) %>% 
-    select(-SZA_hyp) %>%
-    select(-SAA_hyp) %>%
     ungroup() %>% 
     unique()
   
@@ -911,11 +772,20 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
       ungroup() %>%
       select(-SZA_hyp) %>%
       select(-SAA_hyp) %>%
+      rename(SZA_hyp = mean_SZA_hyp) %>%
+      rename(SAA_hyp = mean_SAA_hyp) %>%
       unique() 
   }
   
   time_or_sun_angle_output <- valid_angle_T %>% bind_rows(valid_angle_F) %>%
-    select(-validation)
+    select(-validation) %>%
+    tibble::add_column(!!!cols[!names(cols) %in% names(.)]) %>%
+    mutate(operations = paste(operations,write_ops,sep=";") ) %>% 
+    group_by(date,sensor,wvl,bands) %>%#there could be a little difference in the mean since some images could not pass quality checks so we make another average over angles
+    mutate(SAA_hyp = mean(SAA_hyp)) %>%
+    mutate(SZA_hyp = mean(SZA_hyp)) %>%
+    ungroup() %>%
+    unique()
   
   return(time_or_sun_angle_output)
 }
@@ -949,6 +819,8 @@ date_function <- function(sat_col_renamed, hypstar_col_renamed, only_same_date){
 
 #time_or_sun_angle_function ----
 time_or_sun_angle_function <- function(date_output,time_or_sun_angle,just_closest_time_or_sun_angle, range_time_or_sun_angle){
+  cols <- c(operations = "")
+  
   if(time_or_sun_angle){
     
     #create time variables and time difference
@@ -957,28 +829,13 @@ time_or_sun_angle_function <- function(date_output,time_or_sun_angle,just_closes
     
     if(just_closest_time_or_sun_angle){
       #only closest time
-      time_or_sun_angle_output <- time_or_sun_closest(time_output, time_or_angle_diff = T)%>%
-        rename(tos_mean_Ref_hyp = Ref_hyp) %>%#QUIIIIIII controllato
-        mutate(tos_sd_Ref_hyp = 0) %>%
-        rename(mean_time_hyp = time_hyp) %>%
-        group_by(date,sensor,bands,wvl) %>% #qui c'è il problema che scegliendo l'orario più vicino ci possono essere due sun angles differenti che ci portiamo dietro 
-        mutate(mean_SZA_hyp = mean(SZA_hyp)) %>% 
-        mutate(mean_SAA_hyp = mean(SAA_hyp)) %>%
-        ungroup() %>%
-        select(-SZA_hyp,-SAA_hyp) %>%
-        unique()
-      
-      
+      time_or_sun_angle_output <- time_or_sun_closest(time_output, 
+                                                      time_or_angle_diff = T) 
       
     }else{
       #take a window of times and mean
       
-      time_or_sun_angle_output <- time_or_sun_mean(time_output,range_time_or_sun_angle,time_or_sun_angle) %>%
-        group_by(date,sensor,bands,wvl) %>% #anche  qui c'è il problema che scegliendo l'orario più vicino ci possono essere due sun angles differenti che ci portiamo dietro 
-        mutate(mean_SZA_hyp = mean(mean_SZA_hyp)) %>%
-        mutate(mean_SAA_hyp = mean(mean_SAA_hyp)) %>%
-        ungroup() %>%
-        unique()
+      time_or_sun_angle_output <- time_or_sun_mean(time_output,range_time_or_sun_angle,time_or_sun_angle) 
       
       
       
@@ -1013,7 +870,7 @@ view_angle_function <- function(time_or_sun_angle_output, just_closest_view_angl
   
   if(just_closest_view_angle){
     #only closest angle
-    view_angle_output <- time_or_sun_closest(med_view_angle_output, time_or_angle_diff = F)
+    view_angle_output <- view_closest(med_view_angle_output, time_or_angle_diff = F)
     
   }else{
     #take a window of angles and mean
@@ -1095,8 +952,8 @@ get_bands_station <- function(station_name){
   return(bands_csv)
 }
 
-#plot_matchup ----
-plot_matchup <- function(matchup_result,
+#plot_ribbon ----
+plot_ribbon <- function(matchup_result,
                          color_station = "darkgreen",
                          color_sat_EnMAP = "blue",
                          color_sat_PRISMA = "orange",
@@ -1121,6 +978,7 @@ plot_matchup <- function(matchup_result,
   plot <- ggplot(data = matchup_result) + 
     geom_line(aes(x = wvl, y = Ref_sat), linewidth = 1, color = sat_color) +
     geom_line(aes(x = wvl, y = v_mean_Ref_hyp), linewidth = 1, color = color_station) +
+    geom_ribbon(aes(x = wvl, y = Ref_sat, ymin = Ref_sat - sd_sat, ymax = Ref_sat + sd_sat), alpha = alpha, fill = sat_color) +
     geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = alpha, fill = color_station) +
     ggtitle(title) +
     ylab("R [-]") +

@@ -74,11 +74,11 @@ matchup_result_to_PRISMA_1hour_range_all_views <- matchup_function(sat_data = PR
                                                        just_closest_view_angle = F,
                                                        range_view_angle = 360,
                                                        delVZA = c(0))
-plot <- plot_matchup(matchup_result_to_PRISMA_1hour_range_all_views,
-                             alpha = 0.15)
+plot <- plot_ribbon(matchup_result_to_PRISMA_1hour_range_all_views,
+                             alpha = 0.3)
 plot <- plot_rainbow(matchup_result_to_PRISMA_1hour_range_all_views)
 plot <- plot_relative_errors(matchup_result_to_PRISMA_1hour_range_all_views)
-plot_PRISMA_1hour_range_all_views <- plot_matchup(matchup_result_to_PRISMA_1hour_range_all_views,
+plot_PRISMA_1hour_range_all_views <- plot_ribbon(matchup_result_to_PRISMA_1hour_range_all_views,
                      title = "PRISMA vs hypstar in 1hour_range_all_views",
                      save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/matchup_result_to_PRISMA_1hour_range_all_views.png")
 
@@ -94,7 +94,7 @@ matchup_result_to_PRISMA_30_deg_of_view_range_closest_time <- matchup_function(s
                                                      range_view_angle = 30,
                                                      delVZA = c(0))
 
-plot_PRISMA_30_deg_of_view_range_closest_time <- plot_matchup(matchup_result_to_PRISMA_30_deg_of_view_range_closest_time,
+plot_PRISMA_30_deg_of_view_range_closest_time <- plot_ribbon(matchup_result_to_PRISMA_30_deg_of_view_range_closest_time,
                                                   title = "PRISMA vs hypstar in 30_deg_of_view_range_closest_time",
                                                   save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/matchup_result_to_PRISMA_30_deg_of_view_range_closest_time.png")
 
@@ -117,7 +117,7 @@ matchup_result_to_EnMAP_1hour_range_all_views <- matchup_function(sat_data = EnM
                                                      range_view_angle = 360,
                                                      delVZA = c(0))
 
-plot_EnMAP_1hour_range_all_views <- plot_matchup(matchup_result_to_EnMAP_1hour_range_all_views,
+plot_EnMAP_1hour_range_all_views <- plot_ribbon(matchup_result_to_EnMAP_1hour_range_all_views,
                                                   title = "EnMAP vs hypstar in 1hour_range_all_views",
                                                   save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/matchup_result_to_EnMAP_1hour_range_all_views.png")
 
@@ -134,7 +134,7 @@ matchup_result_to_EnMAP_30_deg_of_view_range_closest_time <- matchup_function(sa
                                                      range_view_angle = 30,
                                                      delVZA = c(0))
 
-plot_EnMAP_30_deg_of_view_range_closest_time <- plot_matchup(matchup_result_to_EnMAP_30_deg_of_view_range_closest_time,
+plot_EnMAP_30_deg_of_view_range_closest_time <- plot_ribbon(matchup_result_to_EnMAP_30_deg_of_view_range_closest_time,
                                                               title = "EnMAP vs hypstar in 30_deg_of_view_range_closest_time",
                                                               save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/matchup_result_to_EnMAP_30_deg_of_view_range_closest_time.png")
 
