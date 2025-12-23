@@ -8,8 +8,6 @@
 get_hypstar_data <- function(date_start,
                              date_end,
                              home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
-                             output_pivoted = T, #output to be pivoted (true) or not (false)
-                             unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
                              bands_HYP = get_bands_station("HYPSTAR")){
   library(tidytable)
   
@@ -61,8 +59,7 @@ get_hypstar_data <- function(date_start,
     filter(B1000 < 6000 ) # max value @ 836 nm
   
   #pivot longer and scale data
-  res <- pivoting_longer_function(input_pivoted = F, 
-                                  df = res, 
+  res <- pivoting_longer_function(df = res, 
                                   bands = bands_HYP) %>% mutate(Ref = Ref/10000)
   
   #remove PAA and convert time
@@ -71,25 +68,14 @@ get_hypstar_data <- function(date_start,
     mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
     mutate(time = hms::as_hms(substring(time,1,8)))
   
-  res <- pivoting_wider_function(output_pivoted = output_pivoted,
-                          unpivoted_with_bands = unpivoted_with_bands,
-                          df = res)
-  
   return(res)
 }
 
 #hypstar_spectral_resampling ----
-hypstar_spectral_resampling <- function(dataset_res,
-                                        sat_sensor,
-                                        input_pivoted = T, #dataset_res is pivoted (true) or not (false)
-                                        output_pivoted = T, #output to be pivoted (true) or not (false)
-                                        unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
+hypstar_spectral_resampling <- function(dataset_res, #station data
+                                        sat_sensor, #which satellite sensor to resample to
                                         bands_HYP = get_bands_station("HYPSTAR")){
   library(tidytable)
-  
-  dataset_res_pivot <- pivoting_longer_function(input_pivoted = input_pivoted,
-                                                df = dataset_res,
-                                                bands = bands_HYP)
   
   bands_sensor <- get_bands_sat(sat_sensor)
   
@@ -122,7 +108,7 @@ hypstar_spectral_resampling <- function(dataset_res,
   #Eseguo il ricampionamento
   unpivoted_res <- pivoting_wider_function(unpivoted_with_bands = T,
                           output_pivoted = F,
-                          df = dataset_res_pivot)
+                          df = dataset_res)
   
   band_variables <- names(unpivoted_res)[grepl(x = names(unpivoted_res), pattern = "^B.*")]
   
@@ -130,15 +116,10 @@ hypstar_spectral_resampling <- function(dataset_res,
                                         band_variables = band_variables, #qui serve il nome che le bande hanno nel file originale
                                         SRF = SRF_sat) 
   
-  file_pivoted <- pivoting_longer_function(input_pivoted = F,
-                                             df = file_resampled,
+  file_pivoted <- pivoting_longer_function(df = file_resampled,
                                              bands = bands_sensor)
   
-  file_output <- pivoting_wider_function(output_pivoted = output_pivoted,
-                          unpivoted_with_bands = unpivoted_with_bands,
-                          df = file_pivoted)
-  
-  return(file_output)
+  return(file_pivoted)
   
 }
 
@@ -146,10 +127,8 @@ hypstar_spectral_resampling <- function(dataset_res,
 get_s2_data <- function(date_start, 
                         date_end,
                         hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
-                        repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/", #masked S2 data
-                        output_pivoted = T, #output to be pivoted (true) or not (false)
-                        unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
-                        bands_S2 = get_bands_sat("S2")){
+                        repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/" #masked S2 data
+                        ){
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
@@ -194,7 +173,7 @@ get_s2_data <- function(date_start,
       #we do not return pixels because there are grid problems
       
       #statistics to return
-      output <- mean(four_closest_pixels$value, na.rm = T)
+      output <- c(mean(four_closest_pixels$value, na.rm = T),sd(four_closest_pixels$value, na.rm = T))
     }
     
     return(output)
@@ -214,17 +193,29 @@ get_s2_data <- function(date_start,
     
     bands_statistics <- lapply(bands, get_four_closest_pixels_statistic)
     
+    bands_statistics_mean <- data.table::as.data.table(bands_statistics)[1,]
+    
+    bands_statistics_sd <- data.table::as.data.table(bands_statistics)[2,]
+    
     statistics_dataset <- data.table::data.table()
     
+    angles <- statistics_dataset %>% mutate(bands = extract_names) %>%
+      mutate(value = as.numeric(bands_statistics_mean)) %>%
+      filter(!grep(bands, pattern = "^B.*")) %>%
+      pivot_wider(names_from = bands, values_from = value)
+    
     statistics_pivoted <- statistics_dataset %>% mutate(bands = extract_names) %>%
-      mutate(Ref = as.numeric(bands_statistics)) %>%
+      mutate(Ref = as.numeric(bands_statistics_mean)) %>%
+      mutate(sd = as.numeric(bands_statistics_sd)) %>%
+      filter(grep(bands, pattern = "^B.*")) %>%
       mutate(date = as.Date(substring(basename(product_path),8,15),"%Y%m%d")) %>%
       mutate(time = substring(basename(product_path),16,22)) %>% 
       mutate(time = substring(time,2,8)) %>%
       mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
       mutate(time = hms::as_hms(substring(time,1,8))) %>%
-      pivot_wider(names_from = bands, values_from = Ref) %>%
+      #pivot_wider(names_from = bands, values_from = Ref) %>%
       mutate(sensor = sensor_ID) %>%
+      bind_cols(angles) %>%
       data.table::as.data.table()
     
     #statistics_dataset$bands <- extract_names
@@ -238,17 +229,13 @@ get_s2_data <- function(date_start,
   
   all_datasets <- lapply(product_paths,get_statistics_dataset)
   
-  res <- dplyr::bind_rows(all_datasets) %>%
-    na.omit()
+  binded <- dplyr::bind_rows(all_datasets)%>%
+    na.omit() 
   
-  res <- pivoting_longer_function(input_pivoted = F,
-                                    df = res,
-                                    bands = bands_S2)
+  with_wvl <- add_wvl(binded) %>%
+    na.omit() 
   
-  res <- pivoting_wider_function(output_pivoted = output_pivoted,
-                          unpivoted_with_bands = unpivoted_with_bands,
-                          df = res)
-  return(res)
+  return(with_wvl)
 }
 
 
@@ -258,10 +245,8 @@ get_PRISMA_data <- function(date_start,
                             PRISMA_level_product = "L1",
                             processing_level = "Atcor_regrid_crop_smooth",
                             hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
-                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/", #PRISMA data
-                            output_pivoted = T, #output to be pivoted (true) or not (false)
-                            unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
-                            bands_PRISMA = get_bands_sat("PRISMA")){
+                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/" #PRISMA data
+                            ){
   #here we need to choose the format of PRISMA data
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
@@ -317,7 +302,7 @@ get_PRISMA_data <- function(date_start,
       #we do not return pixels because there are grid problems
       
       #statistics to return
-      output <- mean(four_closest_pixels$value, na.rm = T)
+      output <- c(mean(four_closest_pixels$value, na.rm = T),sd(four_closest_pixels$value, na.rm = T))
     }
     
     return(output)
@@ -341,17 +326,22 @@ get_PRISMA_data <- function(date_start,
     
     bands <- lapply(1:230, create_list_of_rasters)
     
-    bands_statistics <- lapply(bands, get_four_closest_pixels_statistic)
+    bands_statistics <- suppressWarnings(lapply(bands, get_four_closest_pixels_statistic))
+    
+    bands_statistics_mean <- data.table::as.data.table(bands_statistics)[1,]
+    
+    bands_statistics_sd <- data.table::as.data.table(bands_statistics)[2,]
     
     statistics_dataset <- data.table::data.table()
     
     read_angle_and_time <- read.csv(paste0(product_path,"/ATCOR/all_angles_file.csv"))
     
     statistics_pivoted <- statistics_dataset %>% mutate(bands = paste0("B",1:230)) %>%
-      mutate(Ref = as.numeric(bands_statistics)) %>%
+      mutate(Ref = as.numeric(bands_statistics_mean)) %>%
+      mutate(sd = as.numeric(bands_statistics_sd)) %>%
       mutate(date = as.Date(substring(read_angle_and_time$date, 1,10),"%Y-%m-%d")) %>%
       mutate(time = hms::as_hms(substring(read_angle_and_time$date, 12,19))) %>% 
-      pivot_wider(names_from = bands, values_from = Ref) %>%
+      #pivot_wider(names_from = bands, values_from = c(Ref,sd)) %>%
       mutate(sensor = sensor_ID) %>%
       mutate(SAA = read_angle_and_time$sunaz) %>%
       mutate(SZA = read_angle_and_time$sunzen) %>%
@@ -359,29 +349,21 @@ get_PRISMA_data <- function(date_start,
       mutate(VAA = read_angle_and_time$sensor_azimuth) %>%
       data.table::as.data.table()
     
-    #statistics_dataset$bands <- extract_names
-    
-    #statistics_dataset$Ref <- as.numeric(bands_statistics)
-    
-    #here we want to extract also SZA, SAA, VZA, VAA
-    
     return(statistics_pivoted)
   }
   
   all_datasets <- lapply(product_paths,get_statistics_dataset)
   
-  res <- dplyr::bind_rows(all_datasets) %>%
+  binded <- dplyr::bind_rows(all_datasets)%>%
+    na.omit() %>% 
+    mutate(Ref = Ref/10000) %>%
+    mutate(sd = sd/10000)
+  
+  with_wvl <- add_wvl(binded) %>%
     na.omit() 
   
-  #pivot longer and scale
-  res <- pivoting_longer_function(input_pivoted = F,
-                                    df = res,
-                                    bands = bands_PRISMA) %>% mutate(Ref = Ref/10000)
+  return(with_wvl)
   
-  res <- pivoting_wider_function(output_pivoted = output_pivoted,
-                          unpivoted_with_bands = unpivoted_with_bands,
-                          df = res)
-  return(res)
 }
 
 #get_EnMAP_data ----
@@ -390,8 +372,6 @@ get_EnMAP_data <- function(date_start,
                            EnMAP_level_product = "L2A",
                             hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                             repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #PRISMA data
-                            output_pivoted = T, #output to be pivoted (true) or not (false)
-                            unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
                             bands_EnMAP = get_bands_sat("EnMAP")){
   #here we need to choose the format of PRISMA data
   library(tidytable)
@@ -438,7 +418,7 @@ get_EnMAP_data <- function(date_start,
       #we do not return pixels because there are grid problems
       
       #statistics to return
-      output <- mean(four_closest_pixels$value, na.rm = T)
+      output <- c(mean(four_closest_pixels$value, na.rm = T),sd(four_closest_pixels$value, na.rm = T))
     }
     
     return(output)
@@ -469,6 +449,10 @@ get_EnMAP_data <- function(date_start,
     
     bands_statistics <- suppressWarnings(lapply(bands, get_four_closest_pixels_statistic))
     
+    bands_statistics_mean <- data.table::as.data.table(bands_statistics)[1,]
+    
+    bands_statistics_sd <- data.table::as.data.table(bands_statistics)[2,]
+    
     data <- XML::xmlParse(metadata_path)
     
     xml_data <- XML::xmlToList(data)
@@ -485,13 +469,13 @@ get_EnMAP_data <- function(date_start,
     statistics_dataset <- data.table::data.table()
     
     statistics_pivoted <- statistics_dataset %>% mutate(bands = paste0("B",1:224)) %>%
-      mutate(Ref = as.numeric(bands_statistics)) %>%
+      mutate(Ref = as.numeric(bands_statistics_mean)) %>%
+      mutate(sd = as.numeric(bands_statistics_sd)) %>%
       mutate(date = as.Date(substring(basename(product_path),30,37),"%Y%m%d")) %>%
       mutate(time = substring(basename(product_path),38,44)) %>% 
       mutate(time = substring(time,2,8)) %>%
       mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
       mutate(time = hms::as_hms(substring(time,1,8))) %>%
-      pivot_wider(names_from = bands, values_from = Ref) %>%
       mutate(sensor = sensor_ID) %>%
       mutate(SAA = sunAzimithAngle) %>%
       mutate(SZA = sunZenithAngle) %>%
@@ -510,24 +494,17 @@ get_EnMAP_data <- function(date_start,
   
   all_datasets <- lapply(product_paths,get_statistics_dataset)
   
-  res <- dplyr::bind_rows(all_datasets) #%>%
-    #na.omit() 
+  binded <- dplyr::bind_rows(all_datasets)
   
-  res <- pivoting_longer_function(input_pivoted = F,
-                                    df = res,
-                                    bands = bands_EnMAP)
+  with_wvl <- add_wvl(binded) %>%
+    na.omit() 
   
-  res <- pivoting_wider_function(output_pivoted = output_pivoted,
-                          unpivoted_with_bands = unpivoted_with_bands,
-                          df = res)
-
-  return(res)
+  return(with_wvl)
 }
 
 #matchup_function ----
 matchup_function <- function(sat_data, 
                                       hypstar_data,
-                                      
                                       delVZA = c(""), #vector deleting View Zenith Angle inside hypstar dataset
                                       delVAA = c(""), #vector deleting View Azimuth Angle inside hypstar datasets
                                       
@@ -542,64 +519,48 @@ matchup_function <- function(sat_data,
                                       #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
                                       range_view_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
                                       
-                                      input_pivoted = T, #dataset_res is pivoted (true) or not (false) 
-                                      output_pivoted = T, #output to be pivoted (true) or not (false)
-                                      unpivoted_with_bands = T,#output pivoted with bands (T) or with wavelength (false)
-                                      sat_name,
                              bands_HYP = get_bands_station("HYPSTAR")){
   
-  hyp_pivot <- pivoting_longer_function(input_pivoted = input_pivoted,
-                                        df = hypstar_data,
-                                        bands = bands_HYP)
-  
   #to remove specific sensor view angles
-  hyp_pivot <- hyp_pivot %>%     
+  hyp_pivot <- hypstar_data %>%     
     filter(!(VZA %in% delVZA)) %>%
     filter(!(VAA %in% delVAA))
   
+  sat_name <- unique(sat_data$sensor)
   
   if(sat_name == "EnMAP"){
     hypstar_resampled <- hypstar_spectral_resampling(sat_sensor = "EnMAP",
-                                                     input_pivoted = T,
                                                      dataset_res = hyp_pivot) %>% mutate(sensor = sat_name)
   }
   if(sat_name == "PRISMA"){
     hypstar_resampled <- hypstar_spectral_resampling(sat_sensor = "PRISMA",
-                                                     input_pivoted = T,
                                                      dataset_res = hyp_pivot) %>% mutate(sensor = sat_name)
   }
-  if(sat_name == "S2"){
-    #qui tenere in conto S2A,S2B,S2C vedi matchup_s2
+  if(sat_name %in% c("S2A","S2B","S2C")){
+    
     hypstar_resampled_to_S2A <- hypstar_spectral_resampling(sat_sensor = "S2A",
-                                                     input_pivoted = T,
                                                      dataset_res = hyp_pivot) %>%
       mutate(sensor = "S2A")
     
     hypstar_resampled_to_S2B <- hypstar_spectral_resampling(sat_sensor = "S2B",
-                                                            input_pivoted = T,
                                                             dataset_res = hyp_pivot)  %>%
       mutate(sensor = "S2B")
     
     hypstar_resampled_to_S2C <- hypstar_spectral_resampling(sat_sensor = "S2C",
-                                                            input_pivoted = T,
                                                             dataset_res = hyp_pivot)  %>%
       mutate(sensor = "S2C")
     
     hypstar_resampled <- hypstar_resampled_to_S2A %>% bind_rows(hypstar_resampled_to_S2B) %>%
       bind_rows(hypstar_resampled_to_S2C)
   }
-  if(!(sat_name %in% c("EnMAP","PRISMA","S2"))){
+  if(!(sat_name %in% c("EnMAP","PRISMA","S2A","S2B","S2C"))){
     print("ERRORE")
   }
   
   bands_sat <- get_bands_sat(sat_name)
   
-  sat_pivot <- pivoting_longer_function(input_pivoted = input_pivoted,
-                                          df = sat_data,
-                                          bands = bands_sat)
-  
   #change col names not to confuse EnMAP B# and hypstar B#
-  sat_col_renamed <- sat_pivot %>% rename_with(~paste0(.,"_sat"),-c(bands,date,sensor,wvl)) 
+  sat_col_renamed <- sat_data %>% rename_with(~paste0(.,"_sat"),-c(bands,date,sensor,wvl)) 
   
   hypstar_col_renamed <- hypstar_resampled %>% rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor,wvl)) 
   
@@ -1064,16 +1025,25 @@ view_angle_function <- function(time_or_sun_angle_output, just_closest_view_angl
 }
 
 #pivoting_longer_function ----
-pivoting_longer_function <- function(input_pivoted, df, bands){
-  if(!input_pivoted){
-    res2_long <- tidyr::pivot_longer(df, cols = starts_with("B"),
+add_wvl <- function(df){
+  library(tidytable)
+  
+  sat_name <- unique(df$sensor)
+  
+  sat_bands <- get_bands_sat(sat_name)
+  
+  res <- tidytable::left_join(df,sat_bands) %>% filter(!is.na(Ref))
+  
+  return(res)
+}
+
+#pivoting_longer_function ----
+pivoting_longer_function <- function(df, bands){
+  res2_long <- tidyr::pivot_longer(df, cols = contains("B"),
                                      names_to = "bands",
                                      values_to = "Ref",
                                      values_drop_na = TRUE) 
-    res2_long <- tidytable::left_join(res2_long,bands) %>% filter(!is.na(Ref)) #not to use na.omit() that could be dangerous
-  }else{
-    res2_long <- df
-  }
+  res2_long <- tidytable::left_join(res2_long,bands) %>% filter(!is.na(Ref)) #not to use na.omit() that could be dangerous
   
   return(res2_long)
 }
@@ -1127,12 +1097,13 @@ get_bands_station <- function(station_name){
 
 #plot_matchup ----
 plot_matchup <- function(matchup_result,
-                         color_station = "blue",
-                         color_sat_EnMAP = "red",
-                         color_sat_PRISMA = "green",
-                         color_sat_S2 = "brown",
+                         color_station = "darkgreen",
+                         color_sat_EnMAP = "blue",
+                         color_sat_PRISMA = "orange",
+                         color_sat_S2 = "red",
+                         alpha = .1,
                          title = "Titolo di prova",
-                         save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/plot_generico.png"){
+                         save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/last_plot.png"){
   library(ggplot2)
   
   sat_name <- unique(matchup_result$sensor)
@@ -1148,13 +1119,71 @@ plot_matchup <- function(matchup_result,
   }
   
   plot <- ggplot(data = matchup_result) + 
-    geom_line(aes(x = wvl, y = Ref_sat), size = 1, color = sat_color) +
-    geom_line(aes(x = wvl, y = v_mean_Ref_hyp), size = 1, color = color_station) +
-    geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = .2) +
-    ggtitle(title)
+    geom_line(aes(x = wvl, y = Ref_sat), linewidth = 1, color = sat_color) +
+    geom_line(aes(x = wvl, y = v_mean_Ref_hyp), linewidth = 1, color = color_station) +
+    geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = alpha, fill = color_station) +
+    ggtitle(title) +
+    ylab("R [-]") +
+    xlab("Wavelength [nm]")
   
-  ggsave(plot = plot, filenam = save_path)
+  ggsave(plot = plot, filename = save_path, height = 3.5, width = 7)
   
   return(plot)
 }
 
+plot_rainbow <- function(matchup_result,
+                         point_size = 3,
+                         title = "Titolo di prova",
+                         save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/last_plot.png"){
+  library(ggplot2)
+  palette <- c(rev(rainbow(8)[-length(rainbow(8))]),"#bbbbbb","#777777","#444444","#000000")
+  values_palette <- scales::rescale(x = c(350,400,450,500,550,600,650,700,1000,1300,1800),
+                            to = c(0,1))
+  sat_name <- unique(matchup_result$sensor)
+  
+  
+  
+  plot <- ggplot() +
+    geom_point(data = matchup_result, 
+               mapping = aes(x = v_mean_Ref_hyp, 
+                             y = Ref_sat,
+                             color = wvl), 
+               size = point_size)+
+    scale_color_gradientn(colours = palette,
+                          na.value = NA,
+                          values = values_palette,
+                          name = "wavelenghts [nm]")+
+    ggtitle(title) +
+    ylab(paste0(sat_name," R [-]")) +
+    geom_abline(slope = 1,
+                intercept = 0,
+                alpha = 0.4,
+                linetype = "dashed")+
+    xlab("Hypstar R [-]")
+  
+  ggsave(plot = plot, filename = save_path, height = 3.5, width = 7)
+  
+  return(plot)
+}
+
+plot_relative_errors <- function(matchup_result,
+                                 point_size = 3,
+                                 title = "Titolo di prova",
+                                 save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/last_plot.png"){
+  relative_error_df <- matchup_result %>% mutate(relative_error = (Ref_sat-v_mean_Ref_hyp)/ v_mean_Ref_hyp *100) 
+  library(ggplot2)
+  plot <- ggplot(data = relative_error_df) +
+    geom_abline(slope = 0, 
+                intercept = 0,
+                linetype = "dashed") +
+    geom_point(mapping = aes(x = wvl, y = relative_error, color = relative_error))+
+    scale_color_gradient2('Relative error (%)',      # titolo della legenda
+                          low = 'red', mid = 'darkgreen', high = 'red',
+                          midpoint = 0)+
+    ylab("Relative error (%)")+
+    xlab("wavelengths [nm]")
+    
+  ggsave(plot = plot, filename = save_path, height = 3.5, width = 7)
+  
+  return(plot)
+}
