@@ -39,15 +39,6 @@ hypstar_data <- get_hypstar_data(date_start = date_start,
 write.table(hypstar_data, output_hypstar_file, quote = F, sep = ";",
             row.names = F)
 
-#prepare hypstar for matchup (optional)
-hypstar_angle_filtered <- hypstar_angle_filter_and_mean(dataset_res = hypstar_data,
-                                                     input_pivoted = pivoted,
-                                                     output_pivoted = pivoted,
-                                                     unpivoted_with_bands = unpivoted_with_bands) 
-
-write.table(hypstar_angle_filtered, gsub("*data.csv$","data_angle_filtered.csv",output_hypstar_file), quote = F, sep = ";",
-            row.names = F)
-
 #get s2 data 
 
 s2_data <- get_s2_data(date_start = date_start,
@@ -58,23 +49,20 @@ s2_data <- get_s2_data(date_start = date_start,
 write.table(s2_data, output_s2_file, quote = F, sep = ";",
             row.names = F)
 
-#prepare s2 for matchup (optional)
-s2_angle_filtered <- s2_angle_filter(dataset_res = s2_data,
-                                     input_pivoted = pivoted,
-                                     output_pivoted = pivoted,
-                                     unpivoted_with_bands = unpivoted_with_bands)
-
-write.table(s2_angle_filtered, gsub("*data.csv$","data_angle_filtered.csv",output_s2_file), quote = F, sep = ";",
-            row.names = F)
-
 #matchup to S2
 
-matchup_result_to_S2 <- matchup_function_to_S2(s2_data = s2_data,
-                                   hypstar_data = hypstar_data,
-                                   input_pivoted = pivoted,
-                                   output_pivoted = pivoted,
-                                   unpivoted_with_bands = unpivoted_with_bands,
-                                   delVZA = c(0))
+matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
+                 sat_name = "S2",
+                 hypstar_data = hypstar_data,
+                 input_pivoted = pivoted,
+                 output_pivoted = pivoted,
+                 unpivoted_with_bands = unpivoted_with_bands,
+                 time_or_sun_angle = T,
+                 just_closest_time_or_sun_angle = F,
+                 range_time_or_sun_angle = 1,
+                 just_closest_view_angle = F,
+                 range_view_angle = 360,
+                 delVZA = c(0))
 
 #get PRISMA data 
 
