@@ -618,7 +618,7 @@ matchup_function <- function(sat_data,
 #view_mean ----
 view_mean <- function(med_view_angle_output, range_view_angle){
   cols <- c(operations = "")
-  cols_num <- c(number_data = "")
+  cols_num <- c(number_data_in_window = "")
   
   write_ops <- paste0("average_in_view_angle_window_of",range_view_angle,"degrees")
   
@@ -632,7 +632,7 @@ view_mean <- function(med_view_angle_output, range_view_angle){
     mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
     mutate(mean_std_hyp = error_propation(std_hyp)) %>%
     tibble::add_column(!!!cols_num[!names(cols_num) %in% names(.)]) %>%
-    mutate(number_data = paste(number_data,length(std_hyp),sep=";")) %>%
+    mutate(number_data_in_window = paste(number_data_in_window,length(std_hyp),sep=";")) %>%
     select(-Ref_hyp,-std_hyp) %>%
     rename(Ref_hyp = mean_Ref_hyp, 
            std_hyp = mean_std_hyp)
@@ -648,15 +648,13 @@ view_mean <- function(med_view_angle_output, range_view_angle){
   
   valid_angle_T <- valid_angle %>%
     filter(validation) %>%
-    select(-VZA_hyp) %>%
-    select(-VAA_hyp) %>%
     ungroup() %>% 
     unique()
   
   if(nrow(valid_angle_T) > 0){
     valid_angle_T <- valid_angle %>%
       filter(validation) %>%
-      mutate(order = contoureR::orderPoints(cbind(VAA_hyp,VZA_hyp)[,1], cbind(VAA_hyp,VZA_hyp)[,2])) %>%
+      mutate(order = inverse_order_points(VAA_hyp,VZA_hyp)) %>% 
       arrange(order) %>% 
       select(-order) %>%
       mutate(VAA_hyp = ifelse(VAA_hyp > 180, VAA_hyp-360, VAA_hyp )) %>%
@@ -666,13 +664,13 @@ view_mean <- function(med_view_angle_output, range_view_angle){
       ungroup() %>%
       select(-VZA_hyp) %>%
       select(-VAA_hyp) %>%
+      rename(VZA_hyp = mean_VZA_hyp) %>%
+      rename(VAA_hyp = mean_VAA_hyp) %>%
       unique() 
   }
   
   valid_angle_F <- valid_angle %>%
     filter(!validation) %>%
-    select(-VZA_hyp) %>%
-    select(-VAA_hyp) %>%
     ungroup() %>% 
     unique()
   
@@ -684,6 +682,8 @@ view_mean <- function(med_view_angle_output, range_view_angle){
       ungroup() %>%
       select(-VZA_hyp) %>%
       select(-VAA_hyp)%>%
+      rename(VAA_hyp = mean_VAA_hyp) %>%
+      rename(VZA_hyp = mean_VZA_hyp) %>%
       unique() 
   }
   
@@ -756,7 +756,7 @@ time_or_sun_closest <- function(med_output, time_or_angle_diff){
 time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_angle){
   
   cols <- c(operations = "")
-  cols_num <- c(number_data = "")
+  cols_num <- c(number_data_in_window = "")
   
   #filtro
   if(time_or_sun_angle){
@@ -776,7 +776,7 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
     mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
     mutate(mean_std_hyp = error_propation(std_hyp)) %>%
     tibble::add_column(!!!cols_num[!names(cols_num) %in% names(.)]) %>%
-    mutate(number_data = paste(number_data,length(std_hyp),sep=";")) %>%
+    mutate(number_data_in_window = paste(number_data_in_window,length(std_hyp),sep=";")) %>%
     select(-Ref_hyp,-std_hyp) %>%
     rename(Ref_hyp = mean_Ref_hyp, 
            std_hyp = mean_std_hyp) %>%
@@ -799,7 +799,7 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
   if(nrow(valid_angle_T)>0){
     valid_angle_T <- valid_angle %>%
       filter(validation) %>%
-      mutate(order = contoureR::orderPoints(cbind(SAA_hyp,SZA_hyp)[,1], cbind(SAA_hyp,SZA_hyp)[,2])) %>%
+      mutate(order = inverse_order_points(SAA_hyp,SZA_hyp)) %>%
       arrange(order) %>% 
       select(-order) %>%
       mutate(SAA_hyp = ifelse(SAA_hyp > 180, SAA_hyp-360, SAA_hyp )) %>%
@@ -1010,9 +1010,9 @@ plot_ribbon <- function(matchup_result,
                          color_sat_EnMAP = "blue",
                          color_sat_PRISMA = "orange",
                          color_sat_S2 = "red",
-                         alpha = .1,
-                         title = "Titolo di prova",
-                         save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/last_plot.png"){
+                         alpha = .3,
+                        title = paste0(unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),
+                         save_path = paste0("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",paste0("ribbon_",unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),".png")){
   library(ggplot2)
   
   sat_name <- unique(matchup_result$sensor)
@@ -1029,9 +1029,9 @@ plot_ribbon <- function(matchup_result,
   
   plot <- ggplot(data = matchup_result) + 
     geom_line(aes(x = wvl, y = Ref_sat), linewidth = 1, color = sat_color) +
-    geom_line(aes(x = wvl, y = v_mean_Ref_hyp), linewidth = 1, color = color_station) +
+    geom_line(aes(x = wvl, y = Ref_hyp), linewidth = 1, color = color_station) +
     geom_ribbon(aes(x = wvl, y = Ref_sat, ymin = Ref_sat - sd_sat, ymax = Ref_sat + sd_sat), alpha = alpha, fill = sat_color) +
-    geom_ribbon(aes(x = wvl, y = v_mean_Ref_hyp, ymin = v_mean_Ref_hyp - v_sd_Ref_hyp, ymax = v_mean_Ref_hyp + v_sd_Ref_hyp), alpha = alpha, fill = color_station) +
+    geom_ribbon(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, fill = color_station) +
     ggtitle(title) +
     ylab("R [-]") +
     xlab("Wavelength [nm]")
@@ -1043,8 +1043,8 @@ plot_ribbon <- function(matchup_result,
 
 plot_rainbow <- function(matchup_result,
                          point_size = 3,
-                         title = "Titolo di prova",
-                         save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/last_plot.png"){
+                         title = paste0(unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),
+                         save_path = paste0("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",paste0("rainbow_",unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),".png")){
   library(ggplot2)
   palette <- c(rev(rainbow(8)[-length(rainbow(8))]),"#bbbbbb","#777777","#444444","#000000")
   values_palette <- scales::rescale(x = c(350,400,450,500,550,600,650,700,1000,1300,1800),
@@ -1055,7 +1055,7 @@ plot_rainbow <- function(matchup_result,
   
   plot <- ggplot() +
     geom_point(data = matchup_result, 
-               mapping = aes(x = v_mean_Ref_hyp, 
+               mapping = aes(x = Ref_hyp, 
                              y = Ref_sat,
                              color = wvl), 
                size = point_size)+
@@ -1078,9 +1078,9 @@ plot_rainbow <- function(matchup_result,
 
 plot_relative_errors <- function(matchup_result,
                                  point_size = 3,
-                                 title = "Titolo di prova",
-                                 save_path = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/last_plot.png"){
-  relative_error_df <- matchup_result %>% mutate(relative_error = (Ref_sat-v_mean_Ref_hyp)/ v_mean_Ref_hyp *100) 
+                                 title = paste0(unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),
+                                 save_path = paste0("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",paste0("relative_error_",unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),".png")){
+  relative_error_df <- matchup_result %>% mutate(relative_error = (Ref_sat-Ref_hyp)/ Ref_hyp *100) 
   library(ggplot2)
   plot <- ggplot(data = relative_error_df) +
     geom_abline(slope = 0, 
@@ -1098,9 +1098,9 @@ plot_relative_errors <- function(matchup_result,
   return(plot)
 }
 
-error_propation <- function(sd_hyp){
-  length <- length(sd_hyp)
-  squares <- as.numeric(lapply(sd_hyp,function(x){return(x^2)}))
+error_propation <- function(std_hyp){
+  length <- length(std_hyp)
+  squares <- as.numeric(lapply(std_hyp,function(x){return(x^2)}))
   sum <- sum(squares)
   output <- sqrt(sum)/length
   return(output)
@@ -1111,15 +1111,23 @@ hypstar_spectral_resampling_ref_and_std <- function(sat_sensor,
   #there is any need to consider propagation here?
   
   hypstar_std <- hypstar_spectral_resampling(sat_sensor = sat_sensor,
-                                             dataset_res = hyp_pivot %>% select(-Ref) %>% rename(Ref = std)) %>% 
+                                             dataset_res = dataset_res %>% select(-Ref) %>% rename(Ref = std)) %>% 
     mutate(sensor = sat_sensor) %>%
     rename(std = Ref)
   
   hypstar_Ref <- hypstar_spectral_resampling(sat_sensor = sat_sensor,
-                                             dataset_res = hyp_pivot %>% select(-std)) %>%
+                                             dataset_res = dataset_res %>% select(-std)) %>%
     mutate(sensor = sat_sensor)
   
   hypstar_output <- hypstar_Ref %>% left_join(hypstar_std)
   
   return(hypstar_output)
+}
+
+inverse_order_points <- function(x,y){
+  exchange <- contoureR::orderPoints(cbind(x,y)[,1], cbind(x,y)[,2])
+  seq <- 1:length(x)
+  inverse <- data.frame(exchange,seq) %>% arrange(exchange) %>% data.table::as.data.table()
+  inverse_order <- inverse$seq
+  return(inverse_order)
 }
