@@ -32,6 +32,7 @@ get_hypstar_data <- function(date_start,
     ncin <- ncdf4::nc_open(file_list)
     
     hyp_ref <- ncdf4::ncvar_get(ncin, "reflectance")
+    hyp_std <- ncdf4::ncvar_get(ncin, "std_reflectance")
     hyp_wvl  <-ncdf4::ncvar_get(ncin, "wavelength")
     hyp_vaa <-ncdf4::ncvar_get(ncin, "viewing_azimuth_angle")
     hyp_paa   <-ncdf4::ncvar_get(ncin, "pointing_azimuth_angle")
@@ -39,7 +40,7 @@ get_hypstar_data <- function(date_start,
     hyp_sza <- ncdf4::ncvar_get(ncin, "solar_zenith_angle")
     hyp_saa <- ncdf4::ncvar_get(ncin, "solar_azimuth_angle")
     
-    complete_DB <- data.table::data.table(date = date,
+    complete_ref <- data.table::data.table(date = date,
                                           time = time,
                                           VZA = hyp_vza,
                                           VAA = hyp_vaa,
@@ -52,23 +53,51 @@ get_hypstar_data <- function(date_start,
                   mutate(across(everything(), ~ as.integer(.x*10000)))) %>%
       mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
     
+    complete_ref_long <- pivoting_longer_function(df = complete_ref, 
+                             bands = bands_HYP) 
+    
+    complete_std <- data.table::data.table(date = date,
+                                           time = time,
+                                           VZA = hyp_vza,
+                                           VAA = hyp_vaa,
+                                           PAA = hyp_paa,
+                                           SZA = hyp_sza,
+                                           SAA = hyp_saa) %>%
+      bind_cols(., hyp_std %>% 
+                  data.table::data.table() %>% 
+                  `names<-`(paste0("B", 1:1554)) %>%
+                  mutate(across(everything(), ~ as.integer(.x*10000)))) %>%
+      mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
+    
+    complete_std_long <- pivoting_longer_function(df = complete_std, 
+                                                  bands = bands_HYP) %>%
+      rename(std = Ref)
+    
+    complete_DB <- complete_ref_long %>% left_join(complete_std_long)
     
     return(complete_DB)
     
-  }) %>% bind_rows() %>%
-    filter(B1000 < 6000 ) # max value @ 836 nm
+  }) %>% bind_rows() 
   
-  #pivot longer and scale data
-  res <- pivoting_longer_function(df = res, 
-                                  bands = bands_HYP) %>% mutate(Ref = Ref/10000)
+  # max value @ 836 nm < 6000
+  filtered <- res %>%
+    mutate(validate_B1000 = ifelse(bands == "B1000" & Ref > 6000,1,-1)) %>% 
+    group_by(date,time,VZA,VAA,SAA,SZA,PAA) %>%
+    mutate(max_validate_B1000 = max(validate_B1000)) %>%
+    ungroup() %>%
+    filter(max_validate_B1000 < 0) %>%
+    select(-max_validate_B1000,-validate_B1000)
+  
+  #scale data
+  scaled <- filtered %>% mutate(Ref = Ref/10000, std = std/10000)
   
   #remove PAA and convert time
-  res <- res  %>% select(-PAA) %>%
+  output <- scaled  %>% select(-PAA) %>%
     mutate(time = substring(time,2,8)) %>%
     mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
     mutate(time = hms::as_hms(substring(time,1,8)))
   
-  return(res)
+  return(output)
 }
 
 #hypstar_spectral_resampling ----
@@ -662,6 +691,28 @@ view_mean <- function(med_view_angle_output, range_view_angle){
 }
 
 #view_closest ----
+view_closest <- function(med_output){
+  cols_sd <- c(sd_hyp = "NA")
+  
+  cols <- c(operations = "NA")
+  
+  write_ops <- "closest_view_angle"
+  
+  closest_output <- med_output %>% 
+      group_by(date,bands,wvl,sensor) %>%
+      mutate(lowest_angle_diff = min(angle_diff)) %>%
+      ungroup() %>%
+      filter(angle_diff == lowest_angle_diff) %>%
+      select(-angle_diff,-lowest_angle_diff) 
+  
+  closest_output_check <- closest_output %>%
+    tibble::add_column(!!!cols_sd[!names(cols_sd) %in% names(.)]) %>%
+    mutate(sd_hyp = ifelse(is.na(sd_hyp),0,sd_hyp)) %>% #when the time is the closest there is no standard deviation
+    tibble::add_column(!!!cols[!names(cols) %in% names(.)]) %>%
+    mutate(operations = paste(operations,write_ops,sep=";") ) 
+  
+  return(closest_output_check)
+}
 
 #time_or_sun_closest ----
 time_or_sun_closest <- function(med_output, time_or_angle_diff){
@@ -671,6 +722,7 @@ time_or_sun_closest <- function(med_output, time_or_angle_diff){
   cols <- c(operations = "NA")
   
   if(time_or_angle_diff){
+    write_ops <- "closest_time"
     closest_output <- med_output %>% 
       group_by(date,bands,sensor,wvl) %>%
       mutate(lowest_time_diff = min(time_diff)) %>%
@@ -678,6 +730,7 @@ time_or_sun_closest <- function(med_output, time_or_angle_diff){
       filter(time_diff == lowest_time_diff) %>%
       select(-time_diff,-lowest_time_diff) 
   }else{
+    write_ops <- "closest_sun_angle"
     closest_output <- med_output %>% 
       group_by(date,bands,wvl,sensor) %>%
       mutate(lowest_angle_diff = min(angle_diff)) %>%
@@ -690,18 +743,20 @@ time_or_sun_closest <- function(med_output, time_or_angle_diff){
     tibble::add_column(!!!cols_sd[!names(cols_sd) %in% names(.)]) %>%
     mutate(sd_hyp = ifelse(is.na(sd_hyp),0,sd_hyp)) %>% #when the time is the closest there is no standard deviation
     group_by(date,sensor,bands,wvl) %>% #qui c'è il problema che scegliendo l'orario più vicino ci possono essere due sun angles differenti che ci portiamo dietro 
-    mutate(SZA_hyp = mean(SZA_hyp)) %>% #se anche lo fa quando c'è View non dovrebbe essere un problema ma meglio separarle
+    mutate(SZA_hyp = mean(SZA_hyp)) %>% 
     mutate(SAA_hyp = mean(SAA_hyp)) %>%
     ungroup() %>%
     unique() %>% 
     tibble::add_column(!!!cols[!names(cols) %in% names(.)]) %>%
-    mutate(operations = paste(operations,"closest_time",sep=";") ) 
+    mutate(operations = paste(operations,write_ops,sep=";") ) 
   
   return(closest_output_check)
 }
 
 #time_or_sun_mean ----
 time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_angle){
+  
+  cols_sd <- c(sd_hyp = NA_real_)
   
   cols <- c(operations = "")
   #filtro
@@ -722,12 +777,13 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
     mutate(count = row_number()) %>%
     mutate(count_max = max(count)) %>%
     select(-count) %>%
-    #fin qui abbiamo Ref_hyp ma non sd_hyp quindi da Ref_hyp calcolo la media e la sd
     mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
-    mutate(sd_hyp = sd(Ref_hyp)) %>%
-    select(-Ref_hyp) %>%
-    rename(Ref_hyp = mean_Ref_hyp) %>%
-    mutate(sd_hyp = ifelse(is.na(sd_hyp),0,sd_hyp)) %>%
+    tibble::add_column(!!!cols_sd[!names(cols_sd) %in% names(.)]) %>%
+    #mutate(sd_hyp = case_match(sd_hyp,NA ~ 0)) %>% #poi rimetto questo
+    mutate(sd_hyp = jitter(0,1))%>%
+    mutate(mean_sd_hyp = error_propation(sd_hyp)) %>%
+    select(-Ref_hyp,-sd_hyp) %>%
+    rename(Ref_hyp = mean_Ref_hyp, sd_hyp = mean_sd_hyp) %>%
     mutate(time_hyp = mean(time_hyp))
   
   valid_angle <- ref_averaged %>%
@@ -848,7 +904,8 @@ time_or_sun_angle_function <- function(date_output,time_or_sun_angle,just_closes
     
     if(just_closest_time_or_sun_angle){
       #only closest angle
-      time_or_sun_angle_output <- time_or_sun_closest(sun_angle_output, time_or_angle_diff = F) %>%
+      time_or_sun_angle_output <- time_or_sun_closest(sun_angle_output, 
+                                                      time_or_angle_diff = F) %>%
         rename(tos_mean_Ref_hyp = Ref_hyp) %>%#QUIIIIIII controllato
         mutate(tos_sd_Ref_hyp = 0)%>%
         rename(mean_time_hyp = time_hyp)
@@ -1044,4 +1101,12 @@ plot_relative_errors <- function(matchup_result,
   ggsave(plot = plot, filename = save_path, height = 3.5, width = 7)
   
   return(plot)
+}
+
+error_propation <- function(sd_hyp){
+  length <- length(sd_hyp)
+  squares <- as.numeric(lapply(sd_hyp,function(x){return(x^2)}))
+  sum <- sum(squares)
+  output <- sqrt(sum)/length
+  return(output)
 }
