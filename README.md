@@ -1,4 +1,7 @@
-# JSIT-hypstar
+# HAMLET (HypSTAR-based Angular Measurements for hyperspectraL Earth-observation validaTion)
+A tool and methodological framework for spaceborne hyperspectral validation activities 
+
+----
 
 Match-up hypstar and hyperspectral satellite missions
 Ciao Emanuele,
