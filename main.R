@@ -69,7 +69,8 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                                        range_time_or_sun_angle = 1,
                                                        just_closest_view_angle = F,
                                                        range_view_angle = 360,
-                                                       delVZA = c(0))
+                                                       delVZA = c(0),
+                                             weighted_mean = T)
 plot <- plot_ribbon(matchup_result_to_PRISMA)
 plot <- plot_rainbow(matchup_result_to_PRISMA)
 plot <- plot_relative_errors(matchup_result_to_PRISMA)

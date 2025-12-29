@@ -35,6 +35,8 @@ get_hypstar_data <- function(date_start,
     
     hyp_ref <- ncdf4::ncvar_get(ncin, "reflectance")
     hyp_std <- ncdf4::ncvar_get(ncin, "std_reflectance")
+    hyp_u_rel_random <- ncdf4::ncvar_get(ncin, "u_rel_random_reflectance")
+    hyp_u_rel_systematic <- ncdf4::ncvar_get(ncin, "u_rel_systematic_reflectance")
     hyp_wvl  <-ncdf4::ncvar_get(ncin, "wavelength")
     hyp_vaa <-ncdf4::ncvar_get(ncin, "viewing_azimuth_angle")
     hyp_paa   <-ncdf4::ncvar_get(ncin, "pointing_azimuth_angle")
@@ -51,8 +53,7 @@ get_hypstar_data <- function(date_start,
                                           SAA = hyp_saa) %>%
       bind_cols(., hyp_ref %>% 
                   data.table::data.table() %>% 
-                  `names<-`(paste0("B", 1:1554)) %>%
-                  mutate(across(everything(), ~ as.integer(.x*10000)))) %>%
+                  `names<-`(paste0("B", 1:1554)) ) %>%
       mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
     
     complete_ref_long <- pivoting_longer_function(df = complete_ref, 
@@ -67,15 +68,47 @@ get_hypstar_data <- function(date_start,
                                            SAA = hyp_saa) %>%
       bind_cols(., hyp_std %>% 
                   data.table::data.table() %>% 
-                  `names<-`(paste0("B", 1:1554)) %>%
-                  mutate(across(everything(), ~ as.integer(.x*10000)))) %>%
+                  `names<-`(paste0("B", 1:1554)) ) %>%
       mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
     
     complete_std_long <- pivoting_longer_function(df = complete_std, 
                                                   bands = bands_HYP) %>%
       rename(std = Ref)
     
-    complete_DB <- complete_ref_long %>% left_join(complete_std_long)
+    # complete_u_rel_random <- data.table::data.table(date = date,
+    #                                        time = time,
+    #                                        VZA = hyp_vza,
+    #                                        VAA = hyp_vaa,
+    #                                        PAA = hyp_paa,
+    #                                        SZA = hyp_sza,
+    #                                        SAA = hyp_saa) %>%
+    #   bind_cols(., hyp_u_rel_random %>% 
+    #               data.table::data.table() %>% 
+    #               `names<-`(paste0("B", 1:1554)) ) %>%
+    #   mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
+    # 
+    # complete_u_rel_random_long <- pivoting_longer_function(df = complete_u_rel_random, 
+    #                                               bands = bands_HYP) %>%
+    #   rename(u_rel_random = Ref)
+    # 
+    # complete_u_rel_systematic <- data.table::data.table(date = date,
+    #                                                 time = time,
+    #                                                 VZA = hyp_vza,
+    #                                                 VAA = hyp_vaa,
+    #                                                 PAA = hyp_paa,
+    #                                                 SZA = hyp_sza,
+    #                                                 SAA = hyp_saa) %>%
+    #   bind_cols(., hyp_u_rel_systematic %>% 
+    #               data.table::data.table() %>% 
+    #               `names<-`(paste0("B", 1:1554)) ) %>%
+    #   mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
+    # 
+    # complete_u_rel_systematic_long <- pivoting_longer_function(df = complete_u_rel_systematic, 
+    #                                                   bands = bands_HYP) %>%
+    #   rename(u_rel_systematic = Ref)
+    # 
+    complete_DB <- complete_ref_long %>% left_join(complete_std_long) #%>%
+      # left_join(complete_u_rel_random_long) %>% left_join(complete_u_rel_systematic_long)
     
     return(complete_DB)
     
@@ -91,10 +124,12 @@ get_hypstar_data <- function(date_start,
     select(-max_validate_B1000,-validate_B1000)
   
   #scale data
-  scaled <- filtered %>% mutate(Ref = Ref/10000, std = std/10000)
-  
+  # scaled <- filtered %>% mutate(Ref = Ref/10000, std = std/10000,
+  #                               u_rel_random = u_rel_random/10000,
+  #                               u_rel_systematic = u_rel_systematic/10000)
+  # 
   #remove PAA and convert time
-  output <- scaled  %>% select(-PAA) %>%
+  output <- filtered  %>% select(-PAA) %>%
     mutate(time = substring(time,2,8)) %>%
     mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
     mutate(time = hms::as_hms(substring(time,1,8)))
@@ -564,7 +599,6 @@ matchup_function <- function(sat_data,
                                       
                                       time_or_sun_angle = F, #consider time (true) or over sun azimuth and zenith angle (false) for filter
                                       just_closest_time_or_sun_angle = T,#closest time/angle (true) or all times/angles in a range (false)
-                                      #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
                                       range_time_or_sun_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
                                       
                                       just_closest_view_angle = T,#closest time/angle (true) or all times/angles in a range (false)
@@ -671,10 +705,11 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
     select(-angle_diff) 
     
   ref_averaged <- filtered %>%
-    mutate(weight = ifelse(weighted_mean,weight,1)) %>%
+    mutate(todoweight = weighted_mean) %>%
+    mutate(weight = ifelse(todoweight,weight,1)) %>%
     group_by(date,bands,wvl,sensor) %>%
     mutate(mean_Ref_hyp = weighted.mean(x = Ref_hyp, w = weight)) %>%
-    select(-weight) %>%
+    select(-weight,-todoweight) %>%
     #mutate(mean_std_hyp = error_propagation(std_hyp)) %>%
     #mutate(mean_std_hyp = sd(Ref_hyp)) %>%
     mutate(mean_std_hyp = error_propagation_v2(std_hyp = std_hyp,
@@ -812,21 +847,22 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
     write_ops <- paste0("average_in_time_window_of_",range_time_or_sun_angle,"hours")
     filtered <- med_output %>%
       filter(time_diff < range_time_or_sun_angle/2*3600) %>%
-      mutate(weight = abs(time_diff)) %>%
+      mutate(weight = as.numeric(abs(time_diff))) %>%
       select(-time_diff) 
   }else{
     write_ops <- paste0("average_in_sun_angle_window_of",range_time_or_sun_angle,"degrees")
     filtered <- med_output %>%
       filter(angle_diff < range_time_or_sun_angle/2) %>%
-      mutate(weight = abs(angle_diff)) %>%
+      mutate(weight = as.numeric(abs(angle_diff))) %>%
       select(-angle_diff)
   }
   
   ref_averaged <- filtered %>%
-    mutate(weight = ifelse(weighted_mean,weight,1)) %>%
+    mutate(todoweight = weighted_mean) %>%
+    mutate(weight = ifelse(todoweight,weight,1)) %>%
     group_by(date,bands,sensor,wvl,VZA_hyp,VAA_hyp) %>%
     mutate(mean_Ref_hyp = weighted.mean(x = Ref_hyp, w = weight)) %>%
-    select(-weight) %>%
+    select(-weight,-todoweight) %>%
     #mutate(mean_std_hyp = error_propagation(std_hyp)) %>%
     #mutate(mean_std_hyp = sd(Ref_hyp)) %>%
     mutate(mean_std_hyp = error_propagation_v2(std_hyp = std_hyp,
