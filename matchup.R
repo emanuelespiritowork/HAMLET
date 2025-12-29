@@ -8,7 +8,9 @@
 get_hypstar_data <- function(date_start,
                              date_end,
                              home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
-                             bands_HYP = get_bands_station("HYPSTAR")){
+                             bands_HYP = get_bands_station("HYPSTAR"),
+                             filename = NULL,
+                             output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
   library(tidytable)
   
   folder_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE)) %>%
@@ -97,6 +99,10 @@ get_hypstar_data <- function(date_start,
     mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) %>%
     mutate(time = hms::as_hms(substring(time,1,8)))
   
+  if(!is.null(filename)){
+    save_function(output, filename, output_directory)
+  }
+  
   return(output)
 }
 
@@ -156,8 +162,9 @@ hypstar_spectral_resampling <- function(dataset_res, #station data
 get_s2_data <- function(date_start, 
                         date_end,
                         hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
-                        repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/" #masked S2 data
-                        ){
+                        repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/", #masked S2 data
+                        filename = NULL,
+                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
@@ -264,6 +271,10 @@ get_s2_data <- function(date_start,
   with_wvl <- add_wvl(binded) %>%
     na.omit() 
   
+  if(!is.null(filename)){
+    save_function(with_wvl, filename, output_directory)
+  }
+  
   return(with_wvl)
 }
 
@@ -274,8 +285,9 @@ get_PRISMA_data <- function(date_start,
                             PRISMA_level_product = "L1",
                             processing_level = "Atcor_regrid_crop_smooth",
                             hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
-                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/" #PRISMA data
-                            ){
+                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/", #PRISMA data
+                            filename = NULL,
+                            output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
   #here we need to choose the format of PRISMA data
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
@@ -391,6 +403,10 @@ get_PRISMA_data <- function(date_start,
   with_wvl <- add_wvl(binded) %>%
     na.omit() 
   
+  if(!is.null(filename)){
+    save_function(with_wvl, filename, output_directory)
+  }
+  
   return(with_wvl)
   
 }
@@ -401,7 +417,9 @@ get_EnMAP_data <- function(date_start,
                            EnMAP_level_product = "L2A",
                             hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                             repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #PRISMA data
-                            bands_EnMAP = get_bands_sat("EnMAP")){
+                            bands_EnMAP = get_bands_sat("EnMAP"),
+                           filename = NULL,
+                           output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
   #here we need to choose the format of PRISMA data
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
@@ -528,6 +546,10 @@ get_EnMAP_data <- function(date_start,
   with_wvl <- add_wvl(binded) %>%
     na.omit() 
   
+  if(!is.null(filename)){
+    save_function(with_wvl, filename, output_directory)
+  }
+  
   return(with_wvl)
 }
 
@@ -547,8 +569,10 @@ matchup_function <- function(sat_data,
                                       just_closest_view_angle = T,#closest time/angle (true) or all times/angles in a range (false)
                                       #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
                                       range_view_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
-                                      
-                             bands_HYP = get_bands_station("HYPSTAR")){
+                                      filename = NULL,
+                             output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
+                             bands_HYP = get_bands_station("HYPSTAR"),
+                             print_polar = F){
   
   #to remove specific sensor view angles
   hyp_pivot <- hypstar_data %>%     
@@ -605,10 +629,22 @@ matchup_function <- function(sat_data,
                                                          just_closest_time_or_sun_angle = just_closest_time_or_sun_angle,
                                                          range_time_or_sun_angle = range_time_or_sun_angle)
   
+  if(print_polar){
+    plot_polar(time_or_sun_angle_output = time_or_sun_angle_output)
+  }
+  
   #VIEW ANGLE PROBLEM
   view_angle_output <- view_angle_function(time_or_sun_angle_output = time_or_sun_angle_output,
                                            range_view_angle = range_view_angle,
                                            just_closest_view_angle = just_closest_view_angle) 
+  
+  #save
+  if(!is.null(filename)){
+    save_function(view_angle_output, filename, output_directory)
+  }else{
+    save_function(view_angle_output, paste0(gsub(";","_",unique(view_angle_output$operations)),".csv"), output_directory) 
+  }
+  
   
   return(view_angle_output)
   
@@ -630,7 +666,10 @@ view_mean <- function(med_view_angle_output, range_view_angle){
   ref_averaged <- filtered %>%
     group_by(date,bands,wvl,sensor) %>%
     mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
-    mutate(mean_std_hyp = error_propation(std_hyp)) %>%
+    #mutate(mean_std_hyp = error_propagation(std_hyp)) %>%
+    #mutate(mean_std_hyp = sd(Ref_hyp)) %>%
+    mutate(mean_std_hyp = error_propagation_v2(std_hyp = std_hyp,
+                                               sample_std_hyp = sd(Ref_hyp))) %>%
     tibble::add_column(!!!cols_num[!names(cols_num) %in% names(.)]) %>%
     mutate(number_data_in_window = paste(number_data_in_window,length(std_hyp),sep=";")) %>%
     select(-Ref_hyp,-std_hyp) %>%
@@ -774,7 +813,10 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
   ref_averaged <- filtered %>%
     group_by(date,bands,sensor,wvl,VZA_hyp,VAA_hyp) %>%
     mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
-    mutate(mean_std_hyp = error_propation(std_hyp)) %>%
+    #mutate(mean_std_hyp = error_propagation(std_hyp)) %>%
+    #mutate(mean_std_hyp = sd(Ref_hyp)) %>%
+    mutate(mean_std_hyp = error_propagation_v2(std_hyp = std_hyp,
+                                               sample_std_hyp = sd(Ref_hyp))) %>%
     tibble::add_column(!!!cols_num[!names(cols_num) %in% names(.)]) %>%
     mutate(number_data_in_window = paste(number_data_in_window,length(std_hyp),sep=";")) %>%
     select(-Ref_hyp,-std_hyp) %>%
@@ -1012,7 +1054,8 @@ plot_ribbon <- function(matchup_result,
                          color_sat_S2 = "red",
                          alpha = .3,
                         title = paste0(unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),
-                         save_path = paste0("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",paste0("ribbon_",unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),".png")){
+                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
+                        filename = paste0("ribbon_",gsub(";","_",title))){
   library(ggplot2)
   
   sat_name <- unique(matchup_result$sensor)
@@ -1036,6 +1079,8 @@ plot_ribbon <- function(matchup_result,
     ylab("R [-]") +
     xlab("Wavelength [nm]")
   
+  save_path <- paste0(output_directory, filename,".png")
+    
   ggsave(plot = plot, filename = save_path, height = 3.5, width = 7)
   
   return(plot)
@@ -1044,7 +1089,8 @@ plot_ribbon <- function(matchup_result,
 plot_rainbow <- function(matchup_result,
                          point_size = 3,
                          title = paste0(unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),
-                         save_path = paste0("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",paste0("rainbow_",unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),".png")){
+                         output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
+                         filename = paste0("rainbow_",gsub(";","_",title))){
   library(ggplot2)
   palette <- c(rev(rainbow(8)[-length(rainbow(8))]),"#bbbbbb","#777777","#444444","#000000")
   values_palette <- scales::rescale(x = c(350,400,450,500,550,600,650,700,1000,1300,1800),
@@ -1071,6 +1117,8 @@ plot_rainbow <- function(matchup_result,
                 linetype = "dashed")+
     xlab("Hypstar R [-]")
   
+  save_path <- paste0(output_directory, filename,".png")
+  
   ggsave(plot = plot, filename = save_path, height = 3.5, width = 7)
   
   return(plot)
@@ -1079,7 +1127,8 @@ plot_rainbow <- function(matchup_result,
 plot_relative_errors <- function(matchup_result,
                                  point_size = 3,
                                  title = paste0(unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),
-                                 save_path = paste0("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",paste0("relative_error_",unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),".png")){
+                                 output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
+                                 filename = paste0("relative_error_",gsub(";","_",title))){
   relative_error_df <- matchup_result %>% mutate(relative_error = (Ref_sat-Ref_hyp)/ Ref_hyp *100) 
   library(ggplot2)
   plot <- ggplot(data = relative_error_df) +
@@ -1092,16 +1141,27 @@ plot_relative_errors <- function(matchup_result,
                           midpoint = 0)+
     ylab("Relative error (%)")+
     xlab("wavelengths [nm]")
-    
+  
+  save_path <- paste0(output_directory, filename,".png")
+  
   ggsave(plot = plot, filename = save_path, height = 3.5, width = 7)
   
   return(plot)
 }
 
-error_propation <- function(std_hyp){
+error_propagation <- function(std_hyp){
   length <- length(std_hyp)
   squares <- as.numeric(lapply(std_hyp,function(x){return(x^2)}))
   sum <- sum(squares)
+  output <- sqrt(sum)/length
+  return(output)
+}
+
+error_propagation_v2 <- function(std_hyp, sample_std_hyp){
+  length <- length(std_hyp)
+  squares <- as.numeric(lapply(std_hyp,function(x){return(x^2)}))
+  squares_with_sample_std <- as.numeric(lapply(squares,function(x){return(x + length*sample_std_hyp^2)})) #length riequilibra per ottenere sd quando non ho varianza sulle singole misure
+  sum <- sum(squares_with_sample_std)
   output <- sqrt(sum)/length
   return(output)
 }
@@ -1130,4 +1190,49 @@ inverse_order_points <- function(x,y){
   inverse <- data.frame(exchange,seq) %>% arrange(exchange) %>% data.table::as.data.table()
   inverse_order <- inverse$seq
   return(inverse_order)
+}
+
+save_function <- function(view_angle_output, filename, output_directory){
+  write.table(x = view_angle_output,
+              file = paste0(output_directory, filename),
+              sep = ";", 
+              quote = F, 
+              row.names = F, 
+              append = F)
+}
+
+plot_polar <- function(time_or_sun_angle_output,
+                       output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
+                       title = paste0(unique(time_or_sun_angle_output$sensor),"_vs_hypstar",unique(time_or_sun_angle_output$operations)),
+                       filename = paste0("polar_",gsub(";","_",title))){
+  library(tidytable)
+  selected_data <- time_or_sun_angle_output %>% mutate(wvl_diff = abs(wvl - 900)) %>%
+    filter(wvl_diff == min(wvl_diff)) %>%
+    select(-wvl_diff)
+  
+  exact_wvl <- unique(selected_data$wvl)
+  
+  sat_coord <- selected_data %>% select(VAA_sat, VZA_sat) %>% unique()
+  
+  library(ggplot2)
+  plot <- ggplot(selected_data) +
+    geom_point(aes(x = VAA_hyp, y = VZA_hyp, color = Ref_sat-Ref_hyp),
+               size = 3) +
+    coord_radial(start = -pi/2, end = +pi/2, inner.radius = 0.1,
+                 r.axis.inside = T) +
+    geom_point(data = sat_coord, aes(x = VAA_sat, y = VZA_sat),
+               color = "black",
+               size = 5) +
+    ylab("VZA [rad]") +
+    xlab("VAA [rad]") +
+    scale_color_gradient2('Ref_sat - Ref_hyp',      # titolo della legenda
+                          low = 'blue', mid = 'green', high = 'red',
+                          midpoint = 0)+
+    ggtitle(paste0(title,"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+  
+  save_path <- paste0(output_directory, filename,".png")
+  
+  ggsave(plot = plot, filename = save_path, height = 3.5, width = 10.5)
+  
+  return(plot)
 }
