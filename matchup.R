@@ -414,12 +414,13 @@ get_PRISMA_data <- function(date_start,
 #get_EnMAP_data ----
 get_EnMAP_data <- function(date_start, 
                             date_end,
-                           EnMAP_level_product = "L2A",
-                            hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
-                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #PRISMA data
-                            bands_EnMAP = get_bands_sat("EnMAP"),
-                           filename = NULL,
-                           output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
+                           EnMAP_level_product = "L2A", #enmap level product
+                            hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp", #hypstar shapefile path
+                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #the main folder of PRISMA data
+                            bands_EnMAP = get_bands_sat("EnMAP"), #where to find enmap bands
+                           filename = NULL, #if not NULL the enmap data will be saved with this filename
+                           output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/" #output directory if filename is not null
+                           ){
   #here we need to choose the format of PRISMA data
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
@@ -569,10 +570,12 @@ matchup_function <- function(sat_data,
                                       just_closest_view_angle = T,#closest time/angle (true) or all times/angles in a range (false)
                                       #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
                                       range_view_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
-                                      filename = NULL,
-                             output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
-                             bands_HYP = get_bands_station("HYPSTAR"),
-                             print_polar = F){
+                                      filename = NULL, #a custom name for file to save, otherwise it will be given a standard file name
+                             output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/", #where to save output of matchup (and polar plot)
+                             bands_HYP = get_bands_station("HYPSTAR"), #bands of Hypstar station
+                             print_polar = F, # if we want to save in the output_directory a polar plot (T) or not (F)
+                             weighted_mean = F #if we want a weighted mean (T) or a simple mean (F)
+                             ){
   
   #to remove specific sensor view angles
   hyp_pivot <- hypstar_data %>%     
@@ -627,16 +630,19 @@ matchup_function <- function(sat_data,
   time_or_sun_angle_output <- time_or_sun_angle_function(date_output = date_output,
                                                          time_or_sun_angle = time_or_sun_angle,
                                                          just_closest_time_or_sun_angle = just_closest_time_or_sun_angle,
-                                                         range_time_or_sun_angle = range_time_or_sun_angle)
+                                                         range_time_or_sun_angle = range_time_or_sun_angle,
+                                                         weighted_mean = weighted_mean)
   
   if(print_polar){
-    plot_polar(time_or_sun_angle_output = time_or_sun_angle_output)
+    plot_polar(time_or_sun_angle_output = time_or_sun_angle_output,
+               output_directory = gsub("csv","plots", output_directory))
   }
   
   #VIEW ANGLE PROBLEM
   view_angle_output <- view_angle_function(time_or_sun_angle_output = time_or_sun_angle_output,
                                            range_view_angle = range_view_angle,
-                                           just_closest_view_angle = just_closest_view_angle) 
+                                           just_closest_view_angle = just_closest_view_angle,
+                                           weighted_mean = weighted_mean) 
   
   #save
   if(!is.null(filename)){
@@ -652,7 +658,7 @@ matchup_function <- function(sat_data,
 
 
 #view_mean ----
-view_mean <- function(med_view_angle_output, range_view_angle){
+view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
   cols <- c(operations = "")
   cols_num <- c(number_data_in_window = "")
   
@@ -661,11 +667,14 @@ view_mean <- function(med_view_angle_output, range_view_angle){
   #filtro sugli angoli
   filtered <- med_view_angle_output %>%
     filter(angle_diff < range_view_angle/2) %>%
+    mutate(weight = abs(angle_diff)) %>%
     select(-angle_diff) 
     
   ref_averaged <- filtered %>%
+    mutate(weight = ifelse(weighted_mean,weight,1)) %>%
     group_by(date,bands,wvl,sensor) %>%
-    mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
+    mutate(mean_Ref_hyp = weighted.mean(x = Ref_hyp, w = weight)) %>%
+    select(-weight) %>%
     #mutate(mean_std_hyp = error_propagation(std_hyp)) %>%
     #mutate(mean_std_hyp = sd(Ref_hyp)) %>%
     mutate(mean_std_hyp = error_propagation_v2(std_hyp = std_hyp,
@@ -676,6 +685,7 @@ view_mean <- function(med_view_angle_output, range_view_angle){
     rename(Ref_hyp = mean_Ref_hyp, 
            std_hyp = mean_std_hyp)
   
+  #here we do not weight the mean because we want to find a value to express the center of the sky visualized from the data 
   valid_angle <- ref_averaged %>%
     mutate(count = row_number()) %>%
     mutate(count_max = max(count)) %>%
@@ -792,7 +802,7 @@ time_or_sun_closest <- function(med_output, time_or_angle_diff){
 }
 
 #time_or_sun_mean ----
-time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_angle){
+time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_angle, weighted_mean){
   
   cols <- c(operations = "")
   cols_num <- c(number_data_in_window = "")
@@ -802,17 +812,21 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
     write_ops <- paste0("average_in_time_window_of_",range_time_or_sun_angle,"hours")
     filtered <- med_output %>%
       filter(time_diff < range_time_or_sun_angle/2*3600) %>%
+      mutate(weight = abs(time_diff)) %>%
       select(-time_diff) 
   }else{
     write_ops <- paste0("average_in_sun_angle_window_of",range_time_or_sun_angle,"degrees")
     filtered <- med_output %>%
       filter(angle_diff < range_time_or_sun_angle/2) %>%
-      select(-angle_diff) 
+      mutate(weight = abs(angle_diff)) %>%
+      select(-angle_diff)
   }
   
   ref_averaged <- filtered %>%
+    mutate(weight = ifelse(weighted_mean,weight,1)) %>%
     group_by(date,bands,sensor,wvl,VZA_hyp,VAA_hyp) %>%
-    mutate(mean_Ref_hyp = mean(Ref_hyp)) %>%
+    mutate(mean_Ref_hyp = weighted.mean(x = Ref_hyp, w = weight)) %>%
+    select(-weight) %>%
     #mutate(mean_std_hyp = error_propagation(std_hyp)) %>%
     #mutate(mean_std_hyp = sd(Ref_hyp)) %>%
     mutate(mean_std_hyp = error_propagation_v2(std_hyp = std_hyp,
@@ -824,6 +838,7 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
            std_hyp = mean_std_hyp) %>%
     mutate(time_hyp = mean(time_hyp))
   
+  #here we do not weight the mean because we want to find a value to express the center of the sky visualized from the data 
   valid_angle <- ref_averaged %>%
     mutate(count = row_number()) %>%
     mutate(count_max = max(count)) %>%
@@ -916,7 +931,7 @@ date_function <- function(sat_col_renamed, hypstar_col_renamed, only_same_date){
 }
 
 #time_or_sun_angle_function ----
-time_or_sun_angle_function <- function(date_output,time_or_sun_angle,just_closest_time_or_sun_angle, range_time_or_sun_angle){
+time_or_sun_angle_function <- function(date_output,time_or_sun_angle,just_closest_time_or_sun_angle, range_time_or_sun_angle, weighted_mean){
   cols <- c(operations = "")
   
   if(time_or_sun_angle){
@@ -933,7 +948,8 @@ time_or_sun_angle_function <- function(date_output,time_or_sun_angle,just_closes
       #take a window of times and mean
       time_or_sun_angle_output <- time_or_sun_mean(med_output = time_output,
                                                    range_time_or_sun_angle = range_time_or_sun_angle,
-                                                   time_or_sun_angle = time_or_sun_angle) 
+                                                   time_or_sun_angle = time_or_sun_angle,
+                                                   weighted_mean = weighted_mean) 
     }
   }else{
     #create time variables and angle difference
@@ -949,14 +965,15 @@ time_or_sun_angle_function <- function(date_output,time_or_sun_angle,just_closes
       #take a window of angles and mean
       time_or_sun_angle_output <- time_or_sun_mean(med_output = sun_angle_output,
                                                    range_time_or_sun_angle = range_time_or_sun_angle,
-                                                   time_or_sun_angle = time_or_sun_angle) 
+                                                   time_or_sun_angle = time_or_sun_angle,
+                                                   weighted_mean = weighted_mean) 
     }
   }
   return(time_or_sun_angle_output)
 }
 
 #view_angle_function ----
-view_angle_function <- function(time_or_sun_angle_output, just_closest_view_angle, range_view_angle){
+view_angle_function <- function(time_or_sun_angle_output, just_closest_view_angle, range_view_angle, weighted_mean){
   med_view_angle_output <- time_or_sun_angle_output %>%
     mutate(angle_diff = 180/pi*acos( sin(VAA_sat*pi/180)*sin(VAA_hyp*pi/180) + cos(VAA_sat*pi/180) * cos(VAA_hyp*pi/180) * cos( VZA_sat*pi/180-VZA_hyp*pi/180 ))) 
   #https://en.wikipedia.org/wiki/Great-circle_distance#cite_ref-2
@@ -969,7 +986,8 @@ view_angle_function <- function(time_or_sun_angle_output, just_closest_view_angl
     #take a window of angles and mean
     
     view_angle_output <- view_mean(med_view_angle_output = med_view_angle_output, 
-                                   range_view_angle = range_view_angle)
+                                   range_view_angle = range_view_angle,
+                                   weighted_mean = weighted_mean)
     
   }
   return(view_angle_output)
@@ -1086,6 +1104,7 @@ plot_ribbon <- function(matchup_result,
   return(plot)
 }
 
+#plot_rainbow ----
 plot_rainbow <- function(matchup_result,
                          point_size = 3,
                          title = paste0(unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),
@@ -1124,6 +1143,7 @@ plot_rainbow <- function(matchup_result,
   return(plot)
 }
 
+#plot_relative_errors ----
 plot_relative_errors <- function(matchup_result,
                                  point_size = 3,
                                  title = paste0(unique(matchup_result$sensor),"_vs_hypstar",unique(matchup_result$operations)),
@@ -1149,6 +1169,7 @@ plot_relative_errors <- function(matchup_result,
   return(plot)
 }
 
+#error_propagation ----
 error_propagation <- function(std_hyp){
   length <- length(std_hyp)
   squares <- as.numeric(lapply(std_hyp,function(x){return(x^2)}))
@@ -1157,6 +1178,7 @@ error_propagation <- function(std_hyp){
   return(output)
 }
 
+#error_propagation_v2 ----
 error_propagation_v2 <- function(std_hyp, sample_std_hyp){
   length <- length(std_hyp)
   squares <- as.numeric(lapply(std_hyp,function(x){return(x^2)}))
@@ -1166,6 +1188,7 @@ error_propagation_v2 <- function(std_hyp, sample_std_hyp){
   return(output)
 }
 
+#hypstar_spectral_resampling_ref_and_std ----
 hypstar_spectral_resampling_ref_and_std <- function(sat_sensor,
                                                     dataset_res){
   #there is any need to consider propagation here?
@@ -1184,6 +1207,7 @@ hypstar_spectral_resampling_ref_and_std <- function(sat_sensor,
   return(hypstar_output)
 }
 
+#inverse_order_points ----
 inverse_order_points <- function(x,y){
   exchange <- contoureR::orderPoints(cbind(x,y)[,1], cbind(x,y)[,2])
   seq <- 1:length(x)
@@ -1192,6 +1216,7 @@ inverse_order_points <- function(x,y){
   return(inverse_order)
 }
 
+#save_function ----
 save_function <- function(view_angle_output, filename, output_directory){
   write.table(x = view_angle_output,
               file = paste0(output_directory, filename),
@@ -1201,6 +1226,7 @@ save_function <- function(view_angle_output, filename, output_directory){
               append = F)
 }
 
+#plot_polar ----
 plot_polar <- function(time_or_sun_angle_output,
                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                        title = paste0(unique(time_or_sun_angle_output$sensor),"_vs_hypstar",unique(time_or_sun_angle_output$operations)),
