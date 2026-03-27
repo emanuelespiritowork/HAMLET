@@ -716,6 +716,10 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
   
   write_ops <- paste0("average_in_view_angle_window_of",range_view_angle,"degrees")
   
+  if(weighted_mean){
+    write_ops <- paste0("weighted_",write_ops)
+  }
+  
   #filtro sugli angoli
   filtered <- med_view_angle_output %>%
     filter(angle_diff < range_view_angle/2) %>%
@@ -738,61 +742,75 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
     rename(Ref_hyp = mean_Ref_hyp, 
            std_hyp = mean_std_hyp)
   
-  #here we do not weight the mean because we want to find a value to express the center of the sky visualized from the data 
-  valid_angle <- ref_averaged %>%
-    mutate(count = row_number()) %>%
-    mutate(count_max = max(count)) %>%
-    select(-count) %>%
-    mutate(validation_for_VZA_hyp = abs(max(VZA_hyp) - min(VZA_hyp)) > 0) %>%
-    mutate(validation_for_VAA_hyp = abs(max(VAA_hyp) - min(VAA_hyp)) > 0) %>% 
-    mutate(validation = validation_for_VZA_hyp & validation_for_VAA_hyp & count_max > 2) %>%
-    select(-validation_for_VZA_hyp,-validation_for_VAA_hyp,-count_max)
-  
-  valid_angle_T <- valid_angle %>%
-    filter(validation) %>%
-    ungroup() %>% 
-    unique()
-  
-  if(nrow(valid_angle_T) > 0){
+  if(!weighted_mean){
+    #here we do not weight the mean because we want to find a value to express the center of the sky visualized from the data 
+    valid_angle <- ref_averaged %>%
+      mutate(count = row_number()) %>%
+      mutate(count_max = max(count)) %>%
+      select(-count) %>%
+      mutate(validation_for_VZA_hyp = abs(max(VZA_hyp) - min(VZA_hyp)) > 0) %>%
+      mutate(validation_for_VAA_hyp = abs(max(VAA_hyp) - min(VAA_hyp)) > 0) %>% 
+      mutate(validation = validation_for_VZA_hyp & validation_for_VAA_hyp & count_max > 2) %>%
+      select(-validation_for_VZA_hyp,-validation_for_VAA_hyp,-count_max)
+    
     valid_angle_T <- valid_angle %>%
       filter(validation) %>%
-      mutate(order = inverse_order_points(VAA_hyp,VZA_hyp)) %>% 
-      arrange(order) %>% 
-      select(-order) %>%
-      mutate(VAA_hyp = ifelse(VAA_hyp > 180, VAA_hyp-360, VAA_hyp )) %>%
-      mutate(mean_VZA_hyp = geosphere::centroid(cbind(VAA_hyp,VZA_hyp))[2]) %>%
-      mutate(mean_VAA_hyp = geosphere::centroid(cbind(VAA_hyp,VZA_hyp))[1]) %>%
-      mutate(mean_VAA_hyp = ifelse(mean_VAA_hyp < 0, 360 + mean_VAA_hyp, mean_VAA_hyp)) %>%
-      ungroup() %>%
-      select(-VZA_hyp) %>%
-      select(-VAA_hyp) %>%
-      rename(VZA_hyp = mean_VZA_hyp) %>%
-      rename(VAA_hyp = mean_VAA_hyp) %>%
-      unique() 
-  }
-  
-  valid_angle_F <- valid_angle %>%
-    filter(!validation) %>%
-    ungroup() %>% 
-    unique()
-  
-  if(nrow(valid_angle_F) > 0){
+      ungroup() %>% 
+      unique()
+    
+    if(nrow(valid_angle_T) > 0){
+      valid_angle_T <- valid_angle %>%
+        filter(validation) %>%
+        mutate(order = inverse_order_points(VAA_hyp,VZA_hyp)) %>% 
+        arrange(order) %>% 
+        select(-order) %>%
+        mutate(VAA_hyp = ifelse(VAA_hyp > 180, VAA_hyp-360, VAA_hyp )) %>%
+        mutate(mean_VZA_hyp = geosphere::centroid(cbind(VAA_hyp,VZA_hyp))[2]) %>%
+        mutate(mean_VAA_hyp = geosphere::centroid(cbind(VAA_hyp,VZA_hyp))[1]) %>%
+        mutate(mean_VAA_hyp = ifelse(mean_VAA_hyp < 0, 360 + mean_VAA_hyp, mean_VAA_hyp)) %>%
+        ungroup() %>%
+        select(-VZA_hyp) %>%
+        select(-VAA_hyp) %>%
+        rename(VZA_hyp = mean_VZA_hyp) %>%
+        rename(VAA_hyp = mean_VAA_hyp) %>%
+        unique() 
+    }
+    
     valid_angle_F <- valid_angle %>%
       filter(!validation) %>%
-      mutate(mean_VZA_hyp = mean(VZA_hyp)) %>%
-      mutate(mean_VAA_hyp = mean(VAA_hyp)) %>%
+      ungroup() %>% 
+      unique()
+    
+    if(nrow(valid_angle_F) > 0){
+      valid_angle_F <- valid_angle %>%
+        filter(!validation) %>%
+        mutate(mean_VZA_hyp = mean(VZA_hyp)) %>%
+        mutate(mean_VAA_hyp = mean(VAA_hyp)) %>%
+        ungroup() %>%
+        select(-VZA_hyp) %>%
+        select(-VAA_hyp)%>%
+        rename(VAA_hyp = mean_VAA_hyp) %>%
+        rename(VZA_hyp = mean_VZA_hyp) %>%
+        unique() 
+    }
+    
+    view_angle_output <- valid_angle_T %>% bind_rows(valid_angle_F) %>%
+      select(-validation)%>%
+      tibble::add_column(!!!cols[!names(cols) %in% names(.)]) %>%
+      mutate(operations = paste(operations,write_ops,sep=";") )
+    
+  }else{
+    #as requested from GC when we do the weighted mean the viewing angle geometry recorded is the one
+    #of the satellite
+    view_angle_output <- ref_averaged %>%
+      tibble::add_column(!!!cols[!names(cols) %in% names(.)]) %>%
+      mutate(operations = paste(operations,write_ops,sep=";") ) %>% 
+      mutate(VAA_hyp = VAA_sat) %>%
+      mutate(VZA_hyp = VZA_sat) %>%
       ungroup() %>%
-      select(-VZA_hyp) %>%
-      select(-VAA_hyp)%>%
-      rename(VAA_hyp = mean_VAA_hyp) %>%
-      rename(VZA_hyp = mean_VZA_hyp) %>%
-      unique() 
+      unique()
   }
   
-  view_angle_output <- valid_angle_T %>% bind_rows(valid_angle_F) %>%
-    select(-validation)%>%
-    tibble::add_column(!!!cols[!names(cols) %in% names(.)]) %>%
-    mutate(operations = paste(operations,write_ops,sep=";") )
   
   return(view_angle_output)
 }
@@ -875,6 +893,10 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
       select(-angle_diff)
   }
   
+  if(weighted_mean){
+    write_ops <- paste0("weighted_",write_ops)
+  }
+  
   ref_averaged <- filtered %>%
     mutate(todoweight = weighted_mean) %>%
     mutate(weight = ifelse(todoweight,weight,1)) %>%
@@ -892,66 +914,79 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
            std_hyp = mean_std_hyp) %>%
     mutate(time_hyp = mean(time_hyp))
   
-  #here we do not weight the mean because we want to find a value to express the center of the sky visualized from the data 
-  valid_angle <- ref_averaged %>%
-    mutate(count = row_number()) %>%
-    mutate(count_max = max(count)) %>%
-    select(-count) %>%
-    mutate(validation_for_SZA_hyp = abs(max(SZA_hyp) - min(SZA_hyp)) > 0) %>%
-    mutate(validation_for_SAA_hyp = abs(max(SAA_hyp) - min(SAA_hyp)) > 0) %>% 
-    mutate(validation = validation_for_SZA_hyp & validation_for_SAA_hyp & count_max > 2) %>%
-    select(-validation_for_SZA_hyp,-validation_for_SAA_hyp,-count_max) 
-  
-  valid_angle_T <- valid_angle %>%
-    filter(validation) %>% 
-    ungroup() %>% 
-    unique()
-  
-  if(nrow(valid_angle_T)>0){
+  if(!weighted_mean){
+    #here we do not weight the mean because we want to find a value to express the center of the sky visualized from the data 
+    valid_angle <- ref_averaged %>%
+      mutate(count = row_number()) %>%
+      mutate(count_max = max(count)) %>%
+      select(-count) %>%
+      mutate(validation_for_SZA_hyp = abs(max(SZA_hyp) - min(SZA_hyp)) > 0) %>%
+      mutate(validation_for_SAA_hyp = abs(max(SAA_hyp) - min(SAA_hyp)) > 0) %>% 
+      mutate(validation = validation_for_SZA_hyp & validation_for_SAA_hyp & count_max > 2) %>%
+      select(-validation_for_SZA_hyp,-validation_for_SAA_hyp,-count_max) 
+    
     valid_angle_T <- valid_angle %>%
-      filter(validation) %>%
-      mutate(order = inverse_order_points(SAA_hyp,SZA_hyp)) %>%
-      arrange(order) %>% 
-      select(-order) %>%
-      mutate(SAA_hyp = ifelse(SAA_hyp > 180, SAA_hyp-360, SAA_hyp )) %>%
-      mutate(mean_SZA_hyp = geosphere::centroid(cbind(SAA_hyp,SZA_hyp))[2]) %>%
-      mutate(mean_SAA_hyp = geosphere::centroid(cbind(SAA_hyp,SZA_hyp))[1]) %>%
-      mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp < 0, 360 + mean_SAA_hyp, mean_SAA_hyp)) %>%
-      ungroup() %>%
-      select(-SZA_hyp) %>%
-      select(-SAA_hyp) %>%
-      rename(SZA_hyp = mean_SZA_hyp) %>%
-      rename(SAA_hyp = mean_SAA_hyp) %>%
-      unique() 
-  }
-  
-  valid_angle_F <- valid_angle %>%
-    filter(!validation) %>% 
-    ungroup() %>% 
-    unique()
-  
-  if(nrow(valid_angle_F)>0){
+      filter(validation) %>% 
+      ungroup() %>% 
+      unique()
+    
+    if(nrow(valid_angle_T)>0){
+      valid_angle_T <- valid_angle %>%
+        filter(validation) %>%
+        mutate(order = inverse_order_points(SAA_hyp,SZA_hyp)) %>%
+        arrange(order) %>% 
+        select(-order) %>%
+        mutate(SAA_hyp = ifelse(SAA_hyp > 180, SAA_hyp-360, SAA_hyp )) %>%
+        mutate(mean_SZA_hyp = geosphere::centroid(cbind(SAA_hyp,SZA_hyp))[2]) %>%
+        mutate(mean_SAA_hyp = geosphere::centroid(cbind(SAA_hyp,SZA_hyp))[1]) %>%
+        mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp < 0, 360 + mean_SAA_hyp, mean_SAA_hyp)) %>%
+        ungroup() %>%
+        select(-SZA_hyp) %>%
+        select(-SAA_hyp) %>%
+        rename(SZA_hyp = mean_SZA_hyp) %>%
+        rename(SAA_hyp = mean_SAA_hyp) %>%
+        unique() 
+    }
+    
     valid_angle_F <- valid_angle %>%
-      filter(!validation) %>%
-      mutate(mean_SZA_hyp = mean(SZA_hyp)) %>%
-      mutate(mean_SAA_hyp = mean(SAA_hyp)) %>%
+      filter(!validation) %>% 
+      ungroup() %>% 
+      unique()
+    
+    if(nrow(valid_angle_F)>0){
+      valid_angle_F <- valid_angle %>%
+        filter(!validation) %>%
+        mutate(mean_SZA_hyp = mean(SZA_hyp)) %>%
+        mutate(mean_SAA_hyp = mean(SAA_hyp)) %>%
+        ungroup() %>%
+        select(-SZA_hyp) %>%
+        select(-SAA_hyp) %>%
+        rename(SZA_hyp = mean_SZA_hyp) %>%
+        rename(SAA_hyp = mean_SAA_hyp) %>%
+        unique() 
+    }
+    
+    time_or_sun_angle_output <- valid_angle_T %>% bind_rows(valid_angle_F) %>%
+      select(-validation) %>%
+      tibble::add_column(!!!cols[!names(cols) %in% names(.)]) %>%
+      mutate(operations = paste(operations,write_ops,sep=";") ) %>% 
+      group_by(date,sensor,wvl,bands) %>%#there could be a little difference in the mean since some images could not pass quality checks so we make another average over angles
+      mutate(SAA_hyp = mean(SAA_hyp)) %>%
+      mutate(SZA_hyp = mean(SZA_hyp)) %>%
       ungroup() %>%
-      select(-SZA_hyp) %>%
-      select(-SAA_hyp) %>%
-      rename(SZA_hyp = mean_SZA_hyp) %>%
-      rename(SAA_hyp = mean_SAA_hyp) %>%
-      unique() 
+      unique()
+    
+  }else{
+    #as requested from GC when we do the weighted mean the viewing angle geometry recorded is the one
+    #of the satellite
+    time_or_sun_angle_output <- ref_averaged %>%
+      tibble::add_column(!!!cols[!names(cols) %in% names(.)]) %>%
+      mutate(operations = paste(operations,write_ops,sep=";") ) %>% 
+      mutate(SZA_hyp = SZA_sat) %>%
+      mutate(SAA_hyp = SAA_sat) %>%
+      ungroup() %>%
+      unique()
   }
-  
-  time_or_sun_angle_output <- valid_angle_T %>% bind_rows(valid_angle_F) %>%
-    select(-validation) %>%
-    tibble::add_column(!!!cols[!names(cols) %in% names(.)]) %>%
-    mutate(operations = paste(operations,write_ops,sep=";") ) %>% 
-    group_by(date,sensor,wvl,bands) %>%#there could be a little difference in the mean since some images could not pass quality checks so we make another average over angles
-    mutate(SAA_hyp = mean(SAA_hyp)) %>%
-    mutate(SZA_hyp = mean(SZA_hyp)) %>%
-    ungroup() %>%
-    unique()
   
   return(time_or_sun_angle_output)
 }
