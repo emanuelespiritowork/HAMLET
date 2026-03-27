@@ -199,7 +199,8 @@ get_s2_data <- function(date_start,
                         hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                         repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/", #masked S2 data
                         filename = NULL,
-                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
+                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
+                        scale = F){
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
@@ -303,6 +304,12 @@ get_s2_data <- function(date_start,
   binded <- dplyr::bind_rows(all_datasets)%>%
     na.omit() 
   
+  if(scale){
+    binded <- binded %>% 
+      mutate(Ref = Ref/10000) %>%
+      mutate(sd = sd/10000)
+  }
+  
   with_wvl <- add_wvl(binded) %>%
     na.omit() 
   
@@ -322,7 +329,8 @@ get_PRISMA_data <- function(date_start,
                             hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                             repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/", #PRISMA data
                             filename = NULL,
-                            output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
+                            output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
+                            scale = F){
   #here we need to choose the format of PRISMA data
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
@@ -431,9 +439,13 @@ get_PRISMA_data <- function(date_start,
   all_datasets <- lapply(product_paths,get_statistics_dataset)
   
   binded <- dplyr::bind_rows(all_datasets)%>%
-    na.omit() %>% 
-    mutate(Ref = Ref/10000) %>%
-    mutate(sd = sd/10000)
+    na.omit()
+  
+  if(scale){
+     binded <- binded %>% 
+      mutate(Ref = Ref/10000) %>%
+      mutate(sd = sd/10000)
+  }
   
   with_wvl <- add_wvl(binded) %>%
     na.omit() 
@@ -454,8 +466,8 @@ get_EnMAP_data <- function(date_start,
                             repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #the main folder of PRISMA data
                             bands_EnMAP = get_bands_sat("EnMAP"), #where to find enmap bands
                            filename = NULL, #if not NULL the enmap data will be saved with this filename
-                           output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/" #output directory if filename is not null
-                           ){
+                           output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/", #output directory if filename is not null
+                           scale = F){
   #here we need to choose the format of PRISMA data
   library(tidytable)
   year_start <- lubridate::year(as.Date(date_start))
@@ -579,6 +591,12 @@ get_EnMAP_data <- function(date_start,
   
   binded <- dplyr::bind_rows(all_datasets)
   
+  if(scale){
+    binded <- binded %>% 
+      mutate(Ref = Ref/10000) %>%
+      mutate(sd = sd/10000)
+  }
+  
   with_wvl <- add_wvl(binded) %>%
     na.omit() 
   
@@ -701,7 +719,7 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
   #filtro sugli angoli
   filtered <- med_view_angle_output %>%
     filter(angle_diff < range_view_angle/2) %>%
-    mutate(weight = abs(angle_diff)) %>%
+    mutate(weight = 1/abs(angle_diff)) %>%
     select(-angle_diff) 
     
   ref_averaged <- filtered %>%
@@ -847,13 +865,13 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
     write_ops <- paste0("average_in_time_window_of_",range_time_or_sun_angle,"hours")
     filtered <- med_output %>%
       filter(time_diff < range_time_or_sun_angle/2*3600) %>%
-      mutate(weight = as.numeric(abs(time_diff))) %>%
+      mutate(weight = 1/as.numeric(abs(time_diff))) %>%
       select(-time_diff) 
   }else{
     write_ops <- paste0("average_in_sun_angle_window_of",range_time_or_sun_angle,"degrees")
     filtered <- med_output %>%
       filter(angle_diff < range_time_or_sun_angle/2) %>%
-      mutate(weight = as.numeric(abs(angle_diff))) %>%
+      mutate(weight = 1/as.numeric(abs(angle_diff))) %>%
       select(-angle_diff)
   }
   
@@ -1191,6 +1209,7 @@ plot_relative_errors <- function(matchup_result,
     geom_abline(slope = 0, 
                 intercept = 0,
                 linetype = "dashed") +
+    ggtitle(title)+
     geom_point(mapping = aes(x = wvl, y = relative_error, color = relative_error))+
     scale_color_gradient2('Relative error (%)',      # titolo della legenda
                           low = 'red', mid = 'darkgreen', high = 'red',
@@ -1284,7 +1303,8 @@ plot_polar <- function(time_or_sun_angle_output,
                  r.axis.inside = T) +
     geom_point(data = sat_coord, aes(x = VAA_sat, y = VZA_sat),
                color = "black",
-               size = 5) +
+               size = 5,
+               shape = "cross") +
     ylab("VZA [rad]") +
     xlab("VAA [rad]") +
     scale_color_gradient2('Ref_sat - Ref_hyp',      # titolo della legenda
