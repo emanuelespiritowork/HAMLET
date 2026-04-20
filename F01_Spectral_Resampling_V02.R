@@ -41,18 +41,18 @@ resampling_bands <- function(central_band, band_list, value_list) {
 resampling_wrapper_function <- function(goal_bands, band_list, value_list) {
     result <- lapply(goal_bands, function(central_band) {
         resampling_bands(central_band, band_list, value_list)
-    }) %>% unlist()
+    }) |> unlist()
     
     return(result)
 }
 
 #####SFR producer#####
 SRF_calculator <- function(SRF_DB, band_centers) {
-    SRF <- SRF_DB %>%
+    SRF <- SRF_DB |>
         tidytable::reframe(tidytable::across(.cols = -c(band),
-                                             .fns = ~ resampling_wrapper_function(band_centers, band, .x))) %>%
+                                             .fns = ~ resampling_wrapper_function(band_centers, band, .x))) |>
         tidytable::mutate(tidytable::across(tidytable::everything(),
-                                            .fns = ~ .x/sum(.x))) %>%
+                                            .fns = ~ .x/sum(.x))) |>
         as.matrix()
     
     colnames(SRF) <- setdiff(names(SRF_DB), "band")
@@ -66,10 +66,10 @@ FWHM_calculator <- function(FWHM_DB, band_centers) {
     result <- lapply(1:length(FWHM_DB[["center"]]), function(x) {
         
         dnorm(band_centers, FWHM_DB[["center"]][x], FWHM_DB[["fwhm"]][x]/(2*sqrt(2*log(2))))
-    }) %>%
-        data.table::as.data.table() %>%
+    }) |>
+        data.table::as.data.table() |>
         tidytable::mutate(tidytable::across(tidytable::everything(),
-                                            .fns = ~ .x/sum(.x))) %>%
+                                            .fns = ~ .x/sum(.x))) |>
         as.matrix()
     
     colnames(result) <- FWHM_DB[["Name"]]
@@ -87,8 +87,8 @@ SRF_adapter <- function(origin_band_centers = NULL,
                         FWHM_DB = NULL) {
     if (mode == "SRF") {
         if (sensor != "custom") {
-            SRF_DB <- list.files(paste0(ref_folder, "/SRF"), full.names = TRUE) %>%
-                .[grepl(sensor, .)] %>%
+            SRF_DB <- list.files(paste0(ref_folder, "/SRF"), full.names = TRUE) 
+            SRF_DB <- SRF_DB[grepl(sensor, SRF_DB)] |>
                 tidytable::fread()
         }
         
@@ -96,8 +96,8 @@ SRF_adapter <- function(origin_band_centers = NULL,
         
     } else if (mode == "FWHM") {
         if (sensor != "custom") {
-            FWHM_DB <- list.files(paste0(ref_folder, "/FWHM"), full.names = TRUE) %>%
-                .[grepl(sensor, .)] %>%
+            FWHM_DB <- list.files(paste0(ref_folder, "/FWHM"), full.names = TRUE) 
+            FWHM_DB <- FWHM_DB[grepl(sensor, FWHM_DB)] |>
                 tidytable::fread()
         }
         
@@ -115,21 +115,22 @@ SRF_adapter <- function(origin_band_centers = NULL,
 #####Raster wrapper#####
 raster_resampler <- function(origin_raster, SRF) {
     
-    raster_dimensions <- dim(origin_raster) %>%
-        .[c(2,1)] %>%
-        c(., ncol(SRF))
+    raster_dimensions <- dim(origin_raster) 
+    raster_dimensions <-raster_dimensions[c(2,1)] 
+    raster_dimensions <- c(raster_dimensions, ncol(SRF))
     
-    raster_extent <- ext(origin_raster)
-    raster_crs <- crs(origin_raster)
+    raster_extent <- terra::ext(origin_raster)
+    raster_crs <- terra::crs(origin_raster)
     
-    final_raster <- origin_raster %>%
+    final_raster <- origin_raster |>
         as.matrix()%*%SRF 
     
-    final_raster <- final_raster %>%
-        array(., raster_dimensions) %>%
-        rast() %>% t() %>%
-        `crs<-`(raster_crs) %>%
-        `ext<-`(raster_extent)
+    final_raster <- final_raster |>
+      array(raster_dimensions) |>
+      terra::rast() |> 
+      t() |>
+      terra::`crs<-`(raster_crs) |>
+      terra::`ext<-`(raster_extent)
     
     names(final_raster) <- colnames(SRF)
     
@@ -141,16 +142,16 @@ raster_resampler <- function(origin_raster, SRF) {
 #####Resamler#####
 dataframe_resampler <- function(total_df, band_variables, SRF) {
     
-    variable_df <- total_df %>% 
+    variable_df <- total_df |>
         tidytable::select(tidytable::any_of(setdiff(names(total_df), band_variables)))
-    bands_df <- total_df %>% 
-        tidytable::select(tidytable::any_of(band_variables)) %>% 
+    bands_df <- total_df |> 
+        tidytable::select(tidytable::any_of(band_variables)) |>
         as.matrix()
     
-    result <- bands_df%*%SRF %>%
-        tidytable::data.table() %>%
-        `names<-`(colnames(SRF)) %>%
-        cbind(variable_df, .)
+    result <- bands_df%*%SRF |>
+        tidytable::data.table() |>
+        `names<-`(colnames(SRF)) 
+    result <- cbind(variable_df, result)
     
     return(result)
     

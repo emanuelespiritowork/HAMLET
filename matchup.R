@@ -166,7 +166,7 @@ hypstar_spectral_resampling <- function(dataset_res, #station data
   }
   
   source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/F01_Spectral_Resampling_V02.R")
-  library(tidytable)
+  # library(tidytable)
   origin_band_centers <- sort(unique(bands_HYP$wvl))
   
   #Crea la matrice di ricampionamento
@@ -189,7 +189,7 @@ hypstar_spectral_resampling <- function(dataset_res, #station data
   file_pivoted <- pivoting_longer_function(df = file_resampled,
                                              bands = bands_sensor)
   
-  detach("package:tidytable", unload = TRUE)
+  # detach("package:tidytable", unload = TRUE)
   
   return(file_pivoted)
   
@@ -610,25 +610,25 @@ get_EnMAP_data <- function(date_start,
 
 #matchup_function ----
 matchup_function <- function(sat_data, 
-                                      hypstar_data,
-                                      delVZA = c(""), #vector deleting View Zenith Angle inside hypstar dataset
-                                      delVAA = c(""), #vector deleting View Azimuth Angle inside hypstar datasets
-                                      
-                                      only_same_date = T,#only same date comparison accepted (true) or closest date (false)
-                                      
-                                      time_or_sun_angle = F, #consider time (true) or over sun azimuth and zenith angle (false) for filter
-                                      just_closest_time_or_sun_angle = T,#closest time/angle (true) or all times/angles in a range (false)
-                                      range_time_or_sun_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
-                                      
-                                      just_closest_view_angle = T,#closest time/angle (true) or all times/angles in a range (false)
-                                      #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
-                                      range_view_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
-                                      filename = NULL, #a custom name for file to save, otherwise it will be given a standard file name
+                             hypstar_data,
+                             delVZA = c(""), #vector deleting View Zenith Angle inside hypstar dataset
+                             delVAA = c(""), #vector deleting View Azimuth Angle inside hypstar datasets
+                             
+                             only_same_date = T,#only same date comparison accepted (true) or closest date (false)
+                             
+                             time_or_sun_angle = F, #consider time (true) or over sun azimuth and zenith angle (false) for filter
+                             just_closest_time_or_sun_angle = T,#closest time/angle (true) or all times/angles in a range (false)
+                             range_time_or_sun_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
+                             
+                             just_closest_view_angle = T,#closest time/angle (true) or all times/angles in a range (false)
+                             #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
+                             range_view_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
+                             filename = NULL, #a custom name for file to save, otherwise it will be given a standard file name
                              output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/", #where to save output of matchup (and polar plot)
                              # bands_HYP = get_bands_station("HYPSTAR_JDS"), #bands of Hypstar station
                              print_polar = F, # if we want to save in the output_directory a polar plot (T) or not (F)
                              weighted_mean = F #if we want a weighted mean (T) or a simple mean (F)
-                             ){
+){
   
   #to remove specific sensor view angles
   hyp_pivot <- hypstar_data |>     

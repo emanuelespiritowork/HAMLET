@@ -7,7 +7,7 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 #source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/F01_Spectral_Resampling_V02.R")
 
 #Parameter of selection:  
-library(tidytable)
+# library(tidytable)
 date_start <- "2025-07-31"
 date_end <- "2025-08-02"
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/prova_codice_hypstar/"
@@ -65,12 +65,12 @@ PRISMA_data <- get_PRISMA_data(date_start = date_start,
 
 matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              hypstar_data = hypstar_data,
-                                                       time_or_sun_angle = T,
-                                                       just_closest_time_or_sun_angle = F,
-                                                       range_time_or_sun_angle = 2,
-                                                       just_closest_view_angle = F,
-                                                       range_view_angle = 360,
-                                                       delVZA = c(0),
+                                             time_or_sun_angle = T,
+                                             just_closest_time_or_sun_angle = F,
+                                             range_time_or_sun_angle = 2,
+                                             just_closest_view_angle = F,
+                                             range_view_angle = 360,
+                                             delVZA = c(0),
                                              weighted_mean = F,
                                              print_polar = T)
 
