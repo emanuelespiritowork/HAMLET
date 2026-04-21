@@ -15,29 +15,15 @@ tool was developed to enable constrained match-ups and analyses, supporting impr
 practices for hyperspectral reflectance products in complex target.
 
 ---
+# Credits
+Emanuele Spirito @ CNR-IREA (author)
 
-Match-up hypstar and hyperspectral satellite missions
-Ciao Emanuele,
+Gabriele Candiani @ CNR-IREA for HYPSTAR data handling, sharing source matlab plot code, laying the foundations of the project
 
+Lorenzo Parigi @ CNR-IREA for resampling code
 
+Mirco Boschetti @ CNR-IREA for advisory
 
-in allegato trovi lo script Matlab per la lettura dei dati Hypstar e la generazione dei vari plot con le relative scale colore.
+Vittorio Brando @ CNR-ISMAR for cooperation
 
-Come puoi vedere anche dal nome, il file aveva lo scopo di ottenere grafici "sporchi, maledetti e subito" per le riunioni di progetto.
-
-Fammi sapere se serve aiuto per capire cosa fa lo script.
-
-
-
-I dati Hypstar al momento vengono salvati in questa cartella:
-
-\\\\10.0.1.243\\projects\\2023\_HyperNet-POP\\3-DATA\\PROCESSED
-
-Come dicevamo prima, in futuro, vorrei spostarli nella cartella nr\_data (rimane da definire "dove" esattamente).
-
-
-
-Ciao,
-
-Gab
-
+Monica Pepe @ CNR-IREA for coordinating the project, scientific supervisioning and organization
