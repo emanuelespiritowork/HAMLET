@@ -1,7 +1,8 @@
 # HAMLET (HypSTAR-based Angular Measurements for hyperspectraL Earth-observation validaTion)
 A tool and methodological framework for spaceborne hyperspectral validation activities 
 
----
+<img width="1808" height="214" alt="logo_CNR_esteso" src="https://github.com/user-attachments/assets/e9fcb8e5-e10f-47df-82ce-ada344309316" >
+<img width="200" height="80" alt="image" src="https://github.com/user-attachments/assets/51eefba9-0e0c-4789-9c15-0aa43b98e723" >
 
 The advent of hyperspectral missions such as DESIS, EMIT, PRISMA and EnMAP increases the need for robust
 calibration and validation frameworks. While Pseudo Invariant Calibration Sites support vicarious
