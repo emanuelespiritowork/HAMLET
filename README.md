@@ -3,6 +3,7 @@ A tool and methodological framework for spaceborne hyperspectral validation acti
 
 <img width="1808" height="214" alt="logo_CNR_esteso" src="https://github.com/user-attachments/assets/e9fcb8e5-e10f-47df-82ce-ada344309316" >
 <img width="200" height="80" alt="image" src="https://github.com/user-attachments/assets/51eefba9-0e0c-4789-9c15-0aa43b98e723" >
+<img width="230" height="86" alt="image" src="https://github.com/user-attachments/assets/2a53a219-edbb-4373-8f3c-0cbaaa5698d8" />
 
 The advent of hyperspectral missions such as DESIS, EMIT, PRISMA and EnMAP increases the need for robust
 calibration and validation frameworks. While Pseudo Invariant Calibration Sites support vicarious
