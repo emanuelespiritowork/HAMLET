@@ -721,7 +721,7 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
     write_ops <- paste0("weighted_",write_ops)
   }
   
-  #filtro sugli angoli
+  #filter over angles (keep only angles in the selected range)
   filtered <- med_view_angle_output |>
     tidytable::filter(angle_diff < range_view_angle/2) |>
     tidytable::mutate(weight = 1/abs(angle_diff)) |>
@@ -758,6 +758,12 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
       tidytable::mutate(validation = validation_for_VZA_hyp & validation_for_VAA_hyp & count_max > 2) |>
       tidytable::select(-validation_for_VZA_hyp,-validation_for_VAA_hyp,-count_max)
     
+    #here we have to split the computation:
+    #first case: the points in the sky are 3 or more but not aligned so that 
+    #they form a polygon. For those we compute the centroids
+    #second case: the points in the sky are 2 or more but aligned so that they form 
+    #a segment. For those we compute the midpoint. 
+    
     valid_angle_T <- valid_angle |>
       tidytable::filter(validation) |>
       tidytable::ungroup() |> 
@@ -789,13 +795,16 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
     if(nrow(valid_angle_F) > 0){
       valid_angle_F <- valid_angle |>
         tidytable::filter(!validation) |>
-        tidytable::mutate(mean_VZA_hyp = mean(VZA_hyp)) |>
-        tidytable::mutate(mean_VAA_hyp = mean(VAA_hyp)) |>
+        tidytable::mutate(VAA_hyp = ifelse(VAA_hyp > 180, VAA_hyp-360, VAA_hyp )) |>
+        tidytable::arrange(VAA_hyp,VZA_hyp) |>
+        tidytable::mutate(mean_VZA_hyp = geosphere::midPoint(cbind(VAA_hyp,VZA_hyp)[1,],cbind(VAA_hyp,VZA_hyp)[length(VAA_hyp),])[2]) |>
+        tidytable::mutate(mean_VAA_hyp = geosphere::midPoint(cbind(VAA_hyp,VZA_hyp)[1,],cbind(VAA_hyp,VZA_hyp)[length(VAA_hyp),])[1]) |>
+        tidytable::mutate(mean_VAA_hyp = ifelse(mean_VAA_hyp < 0, 360 + mean_VAA_hyp, mean_VAA_hyp)) |>
         tidytable::ungroup() |>
         tidytable::select(-VZA_hyp) |>
         tidytable::select(-VAA_hyp)|>
-        tidytable::rename(VAA_hyp = mean_VAA_hyp) |>
         tidytable::rename(VZA_hyp = mean_VZA_hyp) |>
+        tidytable::rename(VAA_hyp = mean_VAA_hyp) |>
         unique() 
     }
     
@@ -896,7 +905,7 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
   cols <- c(operations = "")
   cols_num <- c(number_data_in_window = "")
   
-  #filtro
+  #filter over time/angle (keep only times/angles in the range)
   if(time_or_sun_angle){
     write_ops <- paste0("average_in_time_window_of_",range_time_or_sun_angle,"hours")
     filtered <- med_output |>
@@ -947,6 +956,12 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
       tidytable::mutate(validation = validation_for_SZA_hyp & validation_for_SAA_hyp & count_max > 2) |>
       tidytable::select(-validation_for_SZA_hyp,-validation_for_SAA_hyp,-count_max) 
     
+    #here we have to split the computation:
+    #first case: the points in the sky are 3 or more but not aligned so that 
+    #they form a polygon. For those we compute the centroids
+    #second case: the points in the sky are 2 or more but aligned so that they form 
+    #a segment. For those we compute the midpoint. 
+    
     valid_angle_T <- valid_angle |>
       tidytable::filter(validation) |> 
       tidytable::ungroup() |> 
@@ -978,8 +993,11 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
     if(nrow(valid_angle_F)>0){
       valid_angle_F <- valid_angle |>
         tidytable::filter(!validation) |>
-        tidytable::mutate(mean_SZA_hyp = mean(SZA_hyp)) |>
-        tidytable::mutate(mean_SAA_hyp = mean(SAA_hyp)) |>
+        tidytable::mutate(SAA_hyp = ifelse(SAA_hyp > 180, SAA_hyp-360, SAA_hyp )) |>
+        tidytable::arrange(SAA_hyp,SZA_hyp) |>
+        tidytable::mutate(mean_SZA_hyp = geosphere::midPoint(cbind(SAA_hyp,SZA_hyp)[1,],cbind(SAA_hyp,SZA_hyp)[length(SAA_hyp),])[2]) |>
+        tidytable::mutate(mean_SAA_hyp = geosphere::midPoint(cbind(SAA_hyp,SZA_hyp)[1,],cbind(SAA_hyp,SZA_hyp)[length(SAA_hyp),])[1]) |>
+        tidytable::mutate(mean_SAA_hyp = ifelse(mean_SAA_hyp < 0, 360 + mean_SAA_hyp, mean_SAA_hyp)) |>
         tidytable::ungroup() |>
         tidytable::select(-SZA_hyp) |>
         tidytable::select(-SAA_hyp) |>
@@ -993,10 +1011,16 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
       
     names_cols <- names(time_or_sun_angle_output)
     
+    #while different VZA and VAA are taken the sun position changes so its SAA and 
+    #SZA change. This means that creating averages grouping by VZA and VAA 
+    #will have different centroids in SAA and SZA. For this reason there will
+    #be slightly different SZA and SAA for each combination of VZA and VAA.
+    #To take a uniform value for all of them we average over all of them
+    
     time_or_sun_angle_output <- time_or_sun_angle_output |>
       tibble::add_column(!!!cols[!names(cols) %in% names_cols]) |>
       tidytable::mutate(operations = paste(operations,write_ops,sep=";") ) |> 
-      tidytable::group_by(date,sensor,wvl,bands) |>#there could be a little difference in the mean since some images could not pass quality checks so we make another average over angles
+      tidytable::group_by(date,sensor,wvl,bands) |>
       tidytable::mutate(SAA_hyp = mean(SAA_hyp)) |>
       tidytable::mutate(SZA_hyp = mean(SZA_hyp)) |>
       tidytable::ungroup() |>
