@@ -1,4 +1,4 @@
-# HAMLET (HypSTAR-based Angular Measurements for hyperspectraL Earth-observation validaTion)
+# HAMLET (Hypstar-based Angular Measurements for hyperspectraL Earth-observation validaTion)
 A tool and methodological framework for spaceborne hyperspectral validation activities 
 
 <img width="1808" height="214" alt="logo_CNR_esteso" src="https://github.com/user-attachments/assets/e9fcb8e5-e10f-47df-82ce-ada344309316" >
