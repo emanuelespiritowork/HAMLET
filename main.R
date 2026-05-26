@@ -31,7 +31,6 @@ hypstar_data <- get_hypstar_data(date_start = date_start,
                                  filename = "hypstar_data.csv")
 
 #get s2 data 
-
 s2_data <- get_s2_data(date_start = date_start,
                        date_end = date_end,
                        filename = "s2_data.csv") 
@@ -168,4 +167,8 @@ plot <- plot_relative_errors(matchup_result_to_EnMAP)
 # Hypstar color = "blue"
 # PRISMA color = "green"
 
+ncin$var
 
+function(var){
+  return(c(var$name,var$longname))
+}

@@ -37,12 +37,15 @@ get_hypstar_data <- function(date_start,
     hyp_std <- ncdf4::ncvar_get(ncin, "std_reflectance")
     hyp_u_rel_random <- ncdf4::ncvar_get(ncin, "u_rel_random_reflectance")
     hyp_u_rel_systematic <- ncdf4::ncvar_get(ncin, "u_rel_systematic_reflectance")
-    hyp_wvl  <-ncdf4::ncvar_get(ncin, "wavelength")
+    hyp_u_err_corr_systematic <- ncdf4::ncvar_get(ncin, "err_corr_systematic_reflectance")
+    hyp_wvl  <- ncdf4::ncvar_get(ncin, "wavelength")
     hyp_vaa <-ncdf4::ncvar_get(ncin, "viewing_azimuth_angle")
     hyp_paa   <-ncdf4::ncvar_get(ncin, "pointing_azimuth_angle")
     hyp_vza  <-ncdf4::ncvar_get(ncin, "viewing_zenith_angle")
     hyp_sza <- ncdf4::ncvar_get(ncin, "solar_zenith_angle")
     hyp_saa <- ncdf4::ncvar_get(ncin, "solar_azimuth_angle")
+    hyp_fwhm <- ncdf4::ncvar_get(ncin, "bandwidth")
+    hyp_series_id <- ncdf4::ncvar_get(ncin, "series_id")
     
     complete_ref <- data.table::data.table(date = date,
                                           time = time,
@@ -71,44 +74,67 @@ get_hypstar_data <- function(date_start,
                   `names<-`(paste0("B", 1:1554)) ) |>
       tidytable::mutate(tidytable::across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
     
-    complete_std_long <- pivoting_longer_function(df = complete_std, 
+    complete_std_long <- pivoting_longer_function(df = complete_std,
                                                   bands = bands_HYP) |>
       tidytable::rename(std = Ref)
     
-    # complete_u_rel_random <- data.table::data.table(date = date,
-    #                                        time = time,
-    #                                        VZA = hyp_vza,
-    #                                        VAA = hyp_vaa,
-    #                                        PAA = hyp_paa,
-    #                                        SZA = hyp_sza,
-    #                                        SAA = hyp_saa) |>
-    #   bind_cols(., hyp_u_rel_random |> 
-    #               data.table::data.table() |> 
-    #               `names<-`(paste0("B", 1:1554)) ) |>
-    #   mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
+    complete_u_rel_random <- data.table::data.table(date = date,
+                                           time = time,
+                                           VZA = hyp_vza,
+                                           VAA = hyp_vaa,
+                                           PAA = hyp_paa,
+                                           SZA = hyp_sza,
+                                           SAA = hyp_saa) |>
+      tidytable::bind_cols(hyp_u_rel_random |>
+                  data.table::data.table() |>
+                  `names<-`(paste0("B", 1:1554)) ) |>
+      tidytable::mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
+
+    complete_u_rel_random_long <- pivoting_longer_function(df = complete_u_rel_random,
+                                                  bands = bands_HYP) |>
+      tidytable::rename(u_rel_random = Ref)|>
+      tidytable::mutate(u_rel_random = u_rel_random*0.01)
+
+    complete_u_rel_systematic <- data.table::data.table(date = date,
+                                                    time = time,
+                                                    VZA = hyp_vza,
+                                                    VAA = hyp_vaa,
+                                                    PAA = hyp_paa,
+                                                    SZA = hyp_sza,
+                                                    SAA = hyp_saa) |>
+      tidytable::bind_cols(hyp_u_rel_systematic |>
+                  data.table::data.table() |>
+                  `names<-`(paste0("B", 1:1554)) ) |>
+      tidytable::mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
+
+    complete_u_rel_systematic_long <- pivoting_longer_function(df = complete_u_rel_systematic,
+                                                      bands = bands_HYP) |>
+      tidytable::rename(u_rel_systematic = Ref) |>
+      tidytable::mutate(u_rel_systematic = u_rel_systematic*0.01) #rescale factor
+    
+    # complete_err_corr_systematic <- data.table::data.table(date = date,
+    #                                                     time = time,
+    #                                                     VZA = hyp_vza,
+    #                                                     VAA = hyp_vaa,
+    #                                                     PAA = hyp_paa,
+    #                                                     SZA = hyp_sza,
+    #                                                     SAA = hyp_saa) |>
+    #   tidytable::bind_cols(hyp_u_err_corr_systematic |>
+    #                          data.table::data.table() |>
+    #                          `names<-`(paste0("B", 1:1554)) ) |>
+    #   tidytable::mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x))) 
     # 
-    # complete_u_rel_random_long <- pivoting_longer_function(df = complete_u_rel_random, 
-    #                                               bands = bands_HYP) |>
-    #   rename(u_rel_random = Ref)
-    # 
-    # complete_u_rel_systematic <- data.table::data.table(date = date,
-    #                                                 time = time,
-    #                                                 VZA = hyp_vza,
-    #                                                 VAA = hyp_vaa,
-    #                                                 PAA = hyp_paa,
-    #                                                 SZA = hyp_sza,
-    #                                                 SAA = hyp_saa) |>
-    #   bind_cols(., hyp_u_rel_systematic |> 
-    #               data.table::data.table() |> 
-    #               `names<-`(paste0("B", 1:1554)) ) |>
-    #   mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
-    # 
-    # complete_u_rel_systematic_long <- pivoting_longer_function(df = complete_u_rel_systematic, 
-    #                                                   bands = bands_HYP) |>
-    #   rename(u_rel_systematic = Ref)
-    # 
-    complete_DB <- complete_ref_long |> tidytable::left_join(complete_std_long) #|>
-      # left_join(complete_u_rel_random_long) |> left_join(complete_u_rel_systematic_long)
+    # complete_err_corr_systematic_long <- pivoting_longer_function(df = complete_err_corr_systematic,
+    #                                                            bands = bands_HYP) |>
+    #   tidytable::rename(err_corr_systematic = Ref) |>
+    #   tidytable::mutate(err_corr_systematic = err_corr_systematic*0.01) #rescale factor
+
+    complete_DB <- complete_ref_long |> tidytable::left_join(complete_std_long) |>
+      tidytable::left_join(complete_u_rel_random_long) |> tidytable::left_join(complete_u_rel_systematic_long) |>
+      #tidytable::left_join(complete_err_corr_systematic_long) |>
+      tidytable::mutate(u_rand = u_rel_random*Ref,
+                        u_sys = u_rel_systematic*Ref) |>
+      tidytable::select(-c(u_rel_random,u_rel_systematic))
     
     return(complete_DB)
     
@@ -129,10 +155,11 @@ get_hypstar_data <- function(date_start,
   #                               u_rel_systematic = u_rel_systematic/10000)
   # 
   #remove PAA and convert time
-  output <- filtered  |> tidytable::select(-PAA) |>
+  output <- filtered  |> tidytable::select(-PAA, -u_rand, -u_sys) |> #al momento li tolgo 
     tidytable::mutate(time = substring(time,2,8)) |>
     tidytable::mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) |>
-    tidytable::mutate(time = hms::as_hms(substring(time,1,8)))
+    tidytable::mutate(time = hms::as_hms(substring(time,1,8))) |>
+    tidytable::mutate(hyp_sensor = "JSIT")
   
   if(!is.null(filename)){
     save_function(output, filename, output_directory)
@@ -332,6 +359,7 @@ get_PRISMA_data <- function(date_start,
                             repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/", #PRISMA data
                             filename = NULL,
                             output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
+                            number_closest_pixels = 4,
                             scale = F){
   #here we need to choose the format of PRISMA data
   # library(tidytable)
@@ -383,7 +411,7 @@ get_PRISMA_data <- function(date_start,
       
       names(four_closest_pixels) <- c("weight","value")
       
-      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:4]#4 is 4 closest pixels
+      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:number_closest_pixels]#4 is 4 closest pixels
       
       #we do not return pixels because there are grid problems
       
@@ -715,10 +743,10 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
   cols <- c(operations = "")
   cols_num <- c(number_data_in_window = "")
   
-  write_ops <- paste0("average_in_view_angle_window_of",range_view_angle,"degrees")
+  write_ops <- paste0("average_in_view_angle_window_of",range_view_angle,"_degrees")
   
   if(weighted_mean){
-    write_ops <- paste0("weighted_",write_ops)
+    write_ops <- paste0("weighted",write_ops)
   }
   
   #filter over angles (keep only angles in the selected range)
@@ -907,13 +935,13 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
   
   #filter over time/angle (keep only times/angles in the range)
   if(time_or_sun_angle){
-    write_ops <- paste0("average_in_time_window_of_",range_time_or_sun_angle,"hours")
+    write_ops <- paste0("average_in_time_window_of_",range_time_or_sun_angle,"_hours")
     filtered <- med_output |>
       tidytable::filter(time_diff < range_time_or_sun_angle/2*3600) |>
       tidytable::mutate(weight = 1/as.numeric(abs(time_diff))) |>
       tidytable::select(-time_diff) 
   }else{
-    write_ops <- paste0("average_in_sun_angle_window_of",range_time_or_sun_angle,"degrees")
+    write_ops <- paste0("average_in_sun_angle_window_of",range_time_or_sun_angle,"_degrees")
     filtered <- med_output |>
       tidytable::filter(angle_diff < range_time_or_sun_angle/2) |>
       tidytable::mutate(weight = 1/as.numeric(abs(angle_diff))) |>
@@ -921,7 +949,7 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
   }
   
   if(weighted_mean){
-    write_ops <- paste0("weighted_",write_ops)
+    write_ops <- paste0("weighted",write_ops)
   }
   
   ref_averaged <- filtered |>
@@ -1213,9 +1241,9 @@ plot_ribbon <- function(matchup_result,
                          color_sat_PRISMA = "orange",
                          color_sat_S2 = "red",
                          alpha = .3,
-                        title = paste0(unique(substr(matchup_result$sensor,1,2)),"_vs_hypstar",unique(matchup_result$operations)),
+                        title = make_title_for_matchup_plots(matchup_result),
                         output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                        filename = paste0("ribbon_",gsub(";","_",title))){
+                        filename = paste0("ribbon_",title)){
   library(ggplot2)
   
   sat_name <- unique(substr(matchup_result$sensor,1,2))
@@ -1237,11 +1265,12 @@ plot_ribbon <- function(matchup_result,
     geom_ribbon(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, fill = color_station) +
     ggtitle(title) +
     ylab("R [-]") +
-    xlab("Wavelength [nm]")
+    xlab("Wavelength [nm]") +
+    ylim(c(0,1))
   
   save_path <- paste0(output_directory, filename,".png")
     
-  ggsave(plot = plot, filename = save_path, height = 3.5, width = 7)
+  ggsave(plot = plot, filename = save_path, height = 3.5, width = 14)
   
   return(plot)
 }
@@ -1249,9 +1278,9 @@ plot_ribbon <- function(matchup_result,
 #plot_rainbow ----
 plot_rainbow <- function(matchup_result,
                          point_size = 3,
-                         title = paste0(unique(substr(matchup_result$sensor,1,2)),"_vs_hypstar",unique(matchup_result$operations)),
+                         title = make_title_for_matchup_plots(matchup_result),
                          output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                         filename = paste0("rainbow_",gsub(";","_",title))){
+                         filename = paste0("rainbow_",title)){
   library(ggplot2)
   palette <- c(rev(rainbow(8)[-length(rainbow(8))]),"#bbbbbb","#777777","#444444","#000000")
   values_palette <- scales::rescale(x = c(350,400,450,500,550,600,650,700,1000,1300,1800),
@@ -1288,9 +1317,9 @@ plot_rainbow <- function(matchup_result,
 #plot_relative_errors ----
 plot_relative_errors <- function(matchup_result,
                                  point_size = 3,
-                                 title = paste0(unique(substr(matchup_result$sensor,1,2)),"_vs_hypstar",unique(matchup_result$operations)),
+                                 title = make_title_for_matchup_plots(matchup_result),
                                  output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                                 filename = paste0("relative_error_",gsub(";","_",title))){
+                                 filename = paste0("relative_error_",title)){
   relative_error_df <- matchup_result |> tidytable::mutate(relative_error = (Ref_sat-Ref_hyp)/ Ref_hyp *100) 
   library(ggplot2)
   plot <- ggplot(data = relative_error_df) +
@@ -1324,11 +1353,8 @@ error_propagation <- function(std_hyp){
 #error_propagation_v2 ----
 error_propagation_v2 <- function(std_hyp, sample_std_hyp){
   length <- length(std_hyp)
-  squares <- as.numeric(lapply(std_hyp,function(x){return(x^2)}))
-  squares_with_sample_std <- as.numeric(lapply(squares,function(x){return(x + length*sample_std_hyp^2)})) #length riequilibra per ottenere sd quando non ho varianza sulle singole misure
-  sum <- sum(squares_with_sample_std)
-  output <- sqrt(sum)/length
-  return(output)
+  squares_with_sample_std <- as.numeric(lapply(std_hyp,function(x){return(x^2 + length*sample_std_hyp^2)})) #length riequilibra per ottenere sd quando non ho varianza sulle singole misure
+  return(sqrt(sum(squares_with_sample_std))/length)
 }
 
 #hypstar_spectral_resampling_ref_and_std ----
@@ -1405,4 +1431,35 @@ plot_polar <- function(time_or_sun_angle_output,
   ggsave(plot = plot, filename = save_path, height = 3.5, width = 10.5)
   
   return(plot)
+}
+
+plot_all_view_spectra <- function(time_or_sun_angle_output,
+                                  output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
+                                  title = paste0(unique(time_or_sun_angle_output$sensor),"_vs_hypstar",unique(time_or_sun_angle_output$operations)),
+                                  filename = paste0("all_view_spectra_",gsub(";","_",title))){
+  
+}
+
+make_title_for_matchup_plots <- function(matchup_result){
+  title = paste0("SAT-",unique(substr(matchup_result$sensor,1,2)),
+                 "_HYP-",
+                 unique(substr(matchup_result$hyp_sensor,1,4)),
+                 "_DT-", 
+                 gsub("-","",unique(matchup_result$date)),
+                 "T",
+                 gsub(":","",unique(matchup_result$time_sat)),
+                 "_TIME-or-ANGLE-",
+                 strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]][[1]],
+                 "_WINDOW-",
+                 as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[2]]),
+                          error = function(e){return(NULL)})),
+                 strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]])]],
+                 "_VIEW-",
+                 strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[3]],"_")[[1]][[1]],
+                 "_WINDOW-",
+                 as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[3]]),
+                                     error = function(e){return(NULL)})),
+                 "deg"
+                 )
+  return(title)
 }
