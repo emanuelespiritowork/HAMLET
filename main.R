@@ -8,10 +8,10 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 
 #Parameter of selection:  
 # library(tidytable)
-date_start <- "2025-07-31"
-date_end <- "2025-08-02"
-repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/prova_codice_hypstar/"
-processing_level_prs <- "coreg"
+date_start <- "2025-09-16"
+date_end <- "2025-09-19"
+repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/"
+processing_level_prs <- "coreg" #or 0_read
 #minVZA = ?, #minimum View Zenith Angle
 #maxVZA = ?, #maximum View Zenith Angle
 #minVAA = ?, #minimum View Azimuth Angle
@@ -27,14 +27,11 @@ processing_level_prs <- "coreg"
 
 #get hypstar data
 hypstar_data <- get_hypstar_data(date_start = date_start, 
-                                 date_end = date_end,
-                                 filename = "hypstar_data.csv")
+                                 date_end = date_end)
 
 #get s2 data 
 s2_data <- get_s2_data(date_start = date_start,
-                       date_end = date_end,
-                       filename = "s2_data.csv") 
-
+                       date_end = date_end) 
 
 #matchup to S2
 
@@ -57,8 +54,7 @@ PRISMA_data <- get_PRISMA_data(date_start = date_start,
                                date_end = date_end,
                                repo_root_path = repo_root_path_prs,
                                processing_level = processing_level_prs,
-                               PRISMA_level_product = "L2D",
-                               filename = "PRISMA_data.csv") 
+                               PRISMA_level_product = "L2D") 
 
 #matchup to PRISMA
 
@@ -93,8 +89,7 @@ plot <- plot_relative_errors(matchup_result_to_PRISMA)
 #get EnMAP data
 
 EnMAP_data <- get_EnMAP_data(date_start = date_start,
-                              date_end = date_end,
-                             filename = "EnMAP_data.csv")
+                             date_end = date_end)
 
 #matchup to EnMAP
 matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,

@@ -161,7 +161,9 @@ get_hypstar_data <- function(date_start,
     tidytable::mutate(time = hms::as_hms(substring(time,1,8))) |>
     tidytable::mutate(hyp_sensor = "JSIT")
   
-  if(!is.null(filename)){
+  if(is.null(filename)){
+    save_function(output, paste0("hypstar_data_from_", date_start, "_to_", date_end, ".csv"), output_directory)
+  }else{
     save_function(output, filename, output_directory)
   }
   
@@ -244,6 +246,8 @@ get_s2_data <- function(date_start,
   }
   
   product_paths <- unlist(lapply(repo_year_path, get_products_paths))
+  
+  print(product_paths)
   
   hypstar_point <- sf::st_read(hypstar_point_path)
   
@@ -344,6 +348,8 @@ get_s2_data <- function(date_start,
   
   if(!is.null(filename)){
     save_function(with_wvl, filename, output_directory)
+  }else{
+    save_function(with_wvl, paste0(paste0(basename(product_paths), collapse = "_and_"), ".csv"), output_directory)
   }
   
   return(with_wvl)
@@ -370,7 +376,7 @@ get_PRISMA_data <- function(date_start,
   
   #now you enter in the folder where there are products
   get_products_paths <- function(year_path){
-    list_of_products <- list.files(year_path, full.names = T)
+    list_of_products <- list.files(year_path, full.names = T, pattern = "PRS")
     if(grepl("OFFL",basename(list_of_products[1]))){
       OFFL_offset <- 5
     }else{
@@ -425,12 +431,14 @@ get_PRISMA_data <- function(date_start,
   get_statistics_dataset <- function(product_path){
     # library(tidytable)
     
-    print(product_path)
+    #print(product_path)
     
     sensor_ID <- "PRISMA"
     
-    image_path <- list.files(paste0(product_path, "/", processing_level, "/"), full.names = T, recursive = T,
+    image_path <- list.files(paste0(product_path, "/PRISTAR_processing/", processing_level, "/"), full.names = T, recursive = T,
                                pattern = "\\.tif$")
+    
+    print(image_path)
     
     image <- terra::rast(image_path)
     
@@ -448,7 +456,7 @@ get_PRISMA_data <- function(date_start,
     
     statistics_dataset <- data.table::data.table()
     
-    read_angle_and_time <- read.csv(paste0(product_path,"/ATCOR/all_angles_file.csv"))
+    read_angle_and_time <- read.csv(paste0(product_path,"/PRISTAR_processing/atcor/all_angles_file.csv"))
     
     statistics_pivoted <- statistics_dataset |> tidytable::mutate(bands = paste0("B",1:230)) |>
       tidytable::mutate(Ref = as.numeric(bands_statistics_mean)) |>
@@ -480,7 +488,9 @@ get_PRISMA_data <- function(date_start,
   with_wvl <- add_wvl(binded) |>
     stats::na.omit() 
   
-  if(!is.null(filename)){
+  if(is.null(filename)){
+    save_function(with_wvl, paste0(paste0(basename(product_paths), collapse = "_and_"), ".csv"), output_directory)
+  }else{
     save_function(with_wvl, filename, output_directory)
   }
   
@@ -631,6 +641,8 @@ get_EnMAP_data <- function(date_start,
   
   if(!is.null(filename)){
     save_function(with_wvl, filename, output_directory)
+  }else{
+    save_function(with_wvl, paste0(paste0(basename(product_paths), collapse = "_and_"), ".csv"), output_directory)
   }
   
   return(with_wvl)
@@ -729,7 +741,7 @@ matchup_function <- function(sat_data,
   if(!is.null(filename)){
     save_function(view_angle_output, filename, output_directory)
   }else{
-    save_function(view_angle_output, paste0(gsub(";","_",unique(view_angle_output$operations)),".csv"), output_directory) 
+    save_function(view_angle_output, paste0(make_title_for_matchup_plots(view_angle_output), ".csv"), output_directory) 
   }
   
   
@@ -1413,7 +1425,7 @@ plot_polar <- function(time_or_sun_angle_output,
   plot <- ggplot(selected_data) +
     geom_point(aes(x = VAA_hyp, y = VZA_hyp, color = Ref_sat-Ref_hyp),
                size = 3) +
-    coord_radial(start = -pi/2, end = +pi/2, inner.radius = 0.1,
+    coord_radial(theta = "x", start = -pi*15/180, thetalim = c(0,330), inner.radius = 0.1,
                  r.axis.inside = T) +
     geom_point(data = sat_coord, aes(x = VAA_sat, y = VZA_sat),
                color = "black",
@@ -1424,11 +1436,16 @@ plot_polar <- function(time_or_sun_angle_output,
     scale_color_gradient2('Ref_sat - Ref_hyp',      # titolo della legenda
                           low = 'blue', mid = 'green', high = 'red',
                           midpoint = 0)+
-    ggtitle(paste0(title,"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+    scale_x_continuous(
+      limits = c(0, 360),
+      breaks = seq(0, 330, by = 30),
+      minor_breaks = NULL
+    )+
+    ggtitle(label = "polar_plot", subtitle = paste0(title,"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
   
   save_path <- paste0(output_directory, filename,".png")
   
-  ggsave(plot = plot, filename = save_path, height = 3.5, width = 10.5)
+  ggsave(plot = plot, filename = save_path, height = 9, width = 19)
   
   return(plot)
 }
