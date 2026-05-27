@@ -376,7 +376,8 @@ get_PRISMA_data <- function(date_start,
   
   #now you enter in the folder where there are products
   get_products_paths <- function(year_path){
-    list_of_products <- list.files(year_path, full.names = T, pattern = "PRS")
+    list_of_products <- list.dirs(year_path, full.names = T, recursive = F)
+    list_of_products <- list_of_products[grepl("PRS",list_of_products)]
     if(grepl("OFFL",basename(list_of_products[1]))){
       OFFL_offset <- 5
     }else{
@@ -1321,7 +1322,7 @@ plot_rainbow <- function(matchup_result,
   
   save_path <- paste0(output_directory, filename,".png")
   
-  ggsave(plot = plot, filename = save_path, height = 3.5, width = 7)
+  ggsave(plot = plot, filename = save_path, height = 5, width = 13)
   
   return(plot)
 }
@@ -1348,7 +1349,7 @@ plot_relative_errors <- function(matchup_result,
   
   save_path <- paste0(output_directory, filename,".png")
   
-  ggsave(plot = plot, filename = save_path, height = 3.5, width = 7)
+  ggsave(plot = plot, filename = save_path, height = 5, width = 13)
   
   return(plot)
 }
