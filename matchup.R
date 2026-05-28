@@ -19,7 +19,7 @@ get_hypstar_data <- function(date_start,
     tidytable::filter(date >= date_start,
            date <= date_end)
   
-  res <- lapply(1:nrow(folder_list), function(row_n){
+  hyp_function <- function(row_n, folder_list, home_path, bands_HYP){
     folder_name <- folder_list$folder_name[row_n]
     date <- folder_list$date[row_n] 
     time <- folder_list$time[row_n] 
@@ -48,19 +48,19 @@ get_hypstar_data <- function(date_start,
     hyp_series_id <- ncdf4::ncvar_get(ncin, "series_id")
     
     complete_ref <- data.table::data.table(date = date,
-                                          time = time,
-                                          VZA = hyp_vza,
-                                          VAA = hyp_vaa,
-                                          PAA = hyp_paa,
-                                          SZA = hyp_sza,
-                                          SAA = hyp_saa) |>
+                                           time = time,
+                                           VZA = hyp_vza,
+                                           VAA = hyp_vaa,
+                                           PAA = hyp_paa,
+                                           SZA = hyp_sza,
+                                           SAA = hyp_saa) |>
       tidytable::bind_cols(hyp_ref |> 
-                  data.table::data.table() |> 
-                  `names<-`(paste0("B", 1:1554)) ) |>
+                             data.table::data.table() |> 
+                             `names<-`(paste0("B", 1:1554)) ) |>
       tidytable::mutate(tidytable::across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
     
     complete_ref_long <- pivoting_longer_function(df = complete_ref, 
-                             bands = bands_HYP) 
+                                                  bands = bands_HYP) 
     
     complete_std <- data.table::data.table(date = date,
                                            time = time,
@@ -70,8 +70,8 @@ get_hypstar_data <- function(date_start,
                                            SZA = hyp_sza,
                                            SAA = hyp_saa) |>
       tidytable::bind_cols(hyp_std |> 
-                  data.table::data.table() |> 
-                  `names<-`(paste0("B", 1:1554)) ) |>
+                             data.table::data.table() |> 
+                             `names<-`(paste0("B", 1:1554)) ) |>
       tidytable::mutate(tidytable::across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
     
     complete_std_long <- pivoting_longer_function(df = complete_std,
@@ -79,36 +79,36 @@ get_hypstar_data <- function(date_start,
       tidytable::rename(std = Ref)
     
     complete_u_rel_random <- data.table::data.table(date = date,
-                                           time = time,
-                                           VZA = hyp_vza,
-                                           VAA = hyp_vaa,
-                                           PAA = hyp_paa,
-                                           SZA = hyp_sza,
-                                           SAA = hyp_saa) |>
-      tidytable::bind_cols(hyp_u_rel_random |>
-                  data.table::data.table() |>
-                  `names<-`(paste0("B", 1:1554)) ) |>
-      tidytable::mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
-
-    complete_u_rel_random_long <- pivoting_longer_function(df = complete_u_rel_random,
-                                                  bands = bands_HYP) |>
-      tidytable::rename(u_rel_random = Ref)|>
-      tidytable::mutate(u_rel_random = u_rel_random*0.01)
-
-    complete_u_rel_systematic <- data.table::data.table(date = date,
                                                     time = time,
                                                     VZA = hyp_vza,
                                                     VAA = hyp_vaa,
                                                     PAA = hyp_paa,
                                                     SZA = hyp_sza,
                                                     SAA = hyp_saa) |>
-      tidytable::bind_cols(hyp_u_rel_systematic |>
-                  data.table::data.table() |>
-                  `names<-`(paste0("B", 1:1554)) ) |>
+      tidytable::bind_cols(hyp_u_rel_random |>
+                             data.table::data.table() |>
+                             `names<-`(paste0("B", 1:1554)) ) |>
       tidytable::mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
-
+    
+    complete_u_rel_random_long <- pivoting_longer_function(df = complete_u_rel_random,
+                                                           bands = bands_HYP) |>
+      tidytable::rename(u_rel_random = Ref)|>
+      tidytable::mutate(u_rel_random = u_rel_random*0.01)
+    
+    complete_u_rel_systematic <- data.table::data.table(date = date,
+                                                        time = time,
+                                                        VZA = hyp_vza,
+                                                        VAA = hyp_vaa,
+                                                        PAA = hyp_paa,
+                                                        SZA = hyp_sza,
+                                                        SAA = hyp_saa) |>
+      tidytable::bind_cols(hyp_u_rel_systematic |>
+                             data.table::data.table() |>
+                             `names<-`(paste0("B", 1:1554)) ) |>
+      tidytable::mutate(across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
+    
     complete_u_rel_systematic_long <- pivoting_longer_function(df = complete_u_rel_systematic,
-                                                      bands = bands_HYP) |>
+                                                               bands = bands_HYP) |>
       tidytable::rename(u_rel_systematic = Ref) |>
       tidytable::mutate(u_rel_systematic = u_rel_systematic*0.01) #rescale factor
     
@@ -128,7 +128,7 @@ get_hypstar_data <- function(date_start,
     #                                                            bands = bands_HYP) |>
     #   tidytable::rename(err_corr_systematic = Ref) |>
     #   tidytable::mutate(err_corr_systematic = err_corr_systematic*0.01) #rescale factor
-
+    
     complete_DB <- complete_ref_long |> tidytable::left_join(complete_std_long) |>
       tidytable::left_join(complete_u_rel_random_long) |> tidytable::left_join(complete_u_rel_systematic_long) |>
       #tidytable::left_join(complete_err_corr_systematic_long) |>
@@ -138,7 +138,16 @@ get_hypstar_data <- function(date_start,
     
     return(complete_DB)
     
-  }) |> tidytable::bind_rows() 
+  }
+  
+  # print("start_reading")
+  
+  res <- mirai::mirai_map(1:nrow(folder_list), function(x){return(hyp_function(x,folder_list,home_path,bands_HYP))}, 
+                          hyp_function = hyp_function, 
+                          folder_list = folder_list, 
+                          home_path = home_path, 
+                          bands_HYP = bands_HYP,
+                          pivoting_longer_function = pivoting_longer_function)[] |> tidytable::bind_rows() 
   
   # max value @ 836 nm < 6000
   filtered <- res |>
@@ -1256,7 +1265,8 @@ plot_ribbon <- function(matchup_result,
                          alpha = .3,
                         title = make_title_for_matchup_plots(matchup_result),
                         output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                        filename = paste0("ribbon_",title)){
+                        filename = paste0("ribbon_",title),
+                        limits = NULL){
   library(ggplot2)
   
   sat_name <- unique(substr(matchup_result$sensor,1,2))
@@ -1278,8 +1288,11 @@ plot_ribbon <- function(matchup_result,
     geom_ribbon(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, fill = color_station) +
     ggtitle(title) +
     ylab("R [-]") +
-    xlab("Wavelength [nm]") +
-    ylim(c(0,1))
+    xlab("Wavelength [nm]") 
+  
+  if(!is.null(limits)){
+    plot <- plot + ylim(limits)
+  }
   
   save_path <- paste0(output_directory, filename,".png")
     

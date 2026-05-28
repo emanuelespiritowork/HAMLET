@@ -10,13 +10,16 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 # library(tidytable)
 # date_start <- "2024-11-12"
 # date_end <- "2024-11-14"
-# date_start <- "2025-04-20"
-# date_end <- "2025-04-30"
-date_start <- "2025-07-30"
-date_end <- "2025-08-02"
+date_start <- "2025-04-20"
+date_end <- "2025-04-30"
+# date_start <- "2025-07-30"
+# date_end <- "2025-08-02"
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/"
 PRISMA_level_product <- "L2D"
 processing_level_prs <- "coreg" #or 0_read
+mirai::daemons(0)
+mirai::daemons(4)
+
 #minVZA = ?, #minimum View Zenith Angle
 #maxVZA = ?, #maximum View Zenith Angle
 #minVAA = ?, #minimum View Azimuth Angle
@@ -69,6 +72,7 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              just_closest_view_angle = F,
                                              range_view_angle = 360,
                                              delVZA = c(0),
+                                             weighted_mean = F,
                                              print_polar = T)
 
 plot <- plot_ribbon(matchup_result_to_PRISMA)
@@ -97,7 +101,9 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                                      range_time_or_sun_angle = NULL,
                                                      just_closest_view_angle = F,
                                                      range_view_angle = 30,
-                                                     delVZA = c(0))
+                                                     delVZA = c(0),
+                                             weighted_mean = F,
+                                             print_polar = T)
 
 plot <- plot_ribbon(matchup_result_to_PRISMA)
 plot <- plot_rainbow(matchup_result_to_PRISMA)
