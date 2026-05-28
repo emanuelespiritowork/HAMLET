@@ -260,7 +260,7 @@ get_s2_data <- function(date_start,
   
   hypstar_point <- sf::st_read(hypstar_point_path)
   
-  get_four_closest_pixels_statistic <- function(band){
+  get_four_closest_pixels_statistic <- function(band, hypstar_point){
     #print(band)
     #create a raster with a buffer of 10 m around the hypstar point
     hypstar_point_buffer <- sf::st_buffer(hypstar_point,dist = 10)#10 is for 4 closest pixels
@@ -293,7 +293,7 @@ get_s2_data <- function(date_start,
     return(output)
   }
   
-  get_statistics_dataset <- function(product_path){
+  get_statistics_dataset <- function(product_path, hypstar_point){
     # library(tidytable)
     
     sensor_ID <- substring(basename(product_path),24,26)
@@ -305,7 +305,7 @@ get_s2_data <- function(date_start,
     
     extract_names <- stringr::str_match(bands, "m_\\s*(.*?)\\s*.tif")[,2]
     
-    bands_statistics <- lapply(bands, get_four_closest_pixels_statistic)
+    bands_statistics <- lapply(bands, get_four_closest_pixels_statistic, hypstar_point = hypstar_point)
     
     bands_statistics_mean <- data.table::as.data.table(bands_statistics)[1,]
     
@@ -341,7 +341,10 @@ get_s2_data <- function(date_start,
     return(statistics_pivoted)
   }
   
-  all_datasets <- lapply(product_paths,get_statistics_dataset)
+  all_datasets <- mirai::mirai_map(product_paths,function(x){return(get_statistics_dataset(x,hypstar_point))},
+                                   get_statistics_dataset = get_statistics_dataset,
+                                   get_four_closest_pixels_statistic = get_four_closest_pixels_statistic,
+                                   hypstar_point = hypstar_point)[]
   
   binded <- dplyr::bind_rows(all_datasets)|>
     stats::na.omit() 
@@ -358,7 +361,7 @@ get_s2_data <- function(date_start,
   if(!is.null(filename)){
     save_function(with_wvl, filename, output_directory)
   }else{
-    save_function(with_wvl, paste0(paste0(basename(product_paths), collapse = "_and_"), ".csv"), output_directory)
+    save_function(with_wvl, paste0("S2_data_from_",date_start,"_to_",date_end, ".csv"), output_directory)
   }
   
   return(with_wvl)
@@ -751,7 +754,20 @@ matchup_function <- function(sat_data,
   if(!is.null(filename)){
     save_function(view_angle_output, filename, output_directory)
   }else{
-    save_function(view_angle_output, paste0(make_title_for_matchup_plots(view_angle_output), ".csv"), output_directory) 
+    save_function(view_angle_output, paste0(sat_sensor,"_matchups_from_",min(sat_data$date),"_to_",max(sat_data$date),
+                                            "_TIME-or-ANGLE-",
+                                            strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]][[1]],
+                                            "_WINDOW-",
+                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[2]]),
+                                                                error = function(e){return(NULL)})))),
+                                            strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]])]],
+                                            "_VIEW-",
+                                            strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[3]],"_")[[1]][[1]],
+                                            "_WINDOW-",
+                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[3]]),
+                                                                error = function(e){return(NULL)})))),
+                                            "deg",
+                                            ".csv"), output_directory) 
   }
   
   
@@ -1263,11 +1279,10 @@ plot_ribbon <- function(matchup_result,
                          color_sat_PRISMA = "orange",
                          color_sat_S2 = "red",
                          alpha = .3,
-                        title = make_title_for_matchup_plots(matchup_result),
                         output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                        filename = paste0("ribbon_",title),
+                        filename = NULL,
                         limits = NULL){
-  library(ggplot2)
+  # library(ggplot2)
   
   sat_name <- unique(substr(matchup_result$sensor,1,2))
   
@@ -1281,90 +1296,170 @@ plot_ribbon <- function(matchup_result,
     sat_color <- color_sat_S2
   }
   
-  plot <- ggplot(data = matchup_result) + 
-    geom_line(aes(x = wvl, y = Ref_sat), linewidth = 1, color = sat_color) +
-    geom_line(aes(x = wvl, y = Ref_hyp), linewidth = 1, color = color_station) +
-    geom_ribbon(aes(x = wvl, y = Ref_sat, ymin = Ref_sat - sd_sat, ymax = Ref_sat + sd_sat), alpha = alpha, fill = sat_color) +
-    geom_ribbon(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, fill = color_station) +
-    ggtitle(title) +
-    ylab("R [-]") +
-    xlab("Wavelength [nm]") 
-  
-  if(!is.null(limits)){
-    plot <- plot + ylim(limits)
+  plot_function <- function(date_sel, limits, matchup_result, output_directory, filename, sat_color, alpha,color_station){
+    data_plot <- matchup_result |> tidytable::filter(date == date_sel)
+    title <- make_title_for_matchup_plots(data_plot)
+    plot <- ggplot(data = data_plot) + 
+      geom_line(aes(x = wvl, y = Ref_sat), linewidth = 1, color = sat_color) +
+      geom_line(aes(x = wvl, y = Ref_hyp), linewidth = 1, color = color_station) +
+      geom_ribbon(aes(x = wvl, y = Ref_sat, ymin = Ref_sat - sd_sat, ymax = Ref_sat + sd_sat), alpha = alpha, fill = sat_color) +
+      geom_ribbon(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, fill = color_station) +
+      ggtitle(title) +
+      ylab("R [-]") +
+      xlab("Wavelength [nm]") 
+    
+    if(!is.null(limits)){
+      plot <- plot + ylim(limits)
+    }
+    
+    if(is.null(filename)){
+      filename <- paste0("ribbon_",title)
+    }
+    
+    save_path <- paste0(output_directory, filename,".png")
+    
+    ggsave(plot = plot, filename = save_path, height = 3.5, width = 14)
+    
+    return(plot)
   }
   
-  save_path <- paste0(output_directory, filename,".png")
-    
-  ggsave(plot = plot, filename = save_path, height = 3.5, width = 14)
+  mirai::everywhere(
+    library(ggplot2)
+  )
   
-  return(plot)
+  val <- mirai::mirai_map(unique(matchup_result$date),
+                   function(x){return(plot_function(x,
+                                                    limits,
+                                                    matchup_result,
+                                                    output_directory,
+                                                    filename,
+                                                    sat_color,
+                                                    alpha,
+                                                    color_station))},
+                   plot_function = plot_function,
+                   limits = limits,
+                   matchup_result = matchup_result,
+                   output_directory = output_directory,
+                   filename = filename,
+                   sat_color = sat_color,
+                   alpha = alpha,
+                   color_station = color_station,
+                   make_title_for_matchup_plots = make_title_for_matchup_plots)[]
+  
+  return(val)
 }
 
 #plot_rainbow ----
 plot_rainbow <- function(matchup_result,
                          point_size = 3,
-                         title = make_title_for_matchup_plots(matchup_result),
                          output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                         filename = paste0("rainbow_",title)){
-  library(ggplot2)
+                         filename = NULL){
+  # library(ggplot2)
   palette <- c(rev(rainbow(8)[-length(rainbow(8))]),"#bbbbbb","#777777","#444444","#000000")
   values_palette <- scales::rescale(x = c(350,400,450,500,550,600,650,700,1000,1300,1800),
                             to = c(0,1))
   sat_name <- unique(substr(matchup_result$sensor,1,2))
   
+  plot_function <- function(data_sel, matchup_result, point_size, sat_name, values_palette, palette, output_directory, filename){
+    data_plot <- matchup_result |> tidytable::filter(date == data_sel)
+    title <- make_title_for_matchup_plots(data_plot)
+    plot <- ggplot() +
+      geom_point(data = data_plot, 
+                 mapping = aes(x = Ref_hyp, 
+                               y = Ref_sat,
+                               color = wvl), 
+                 size = point_size)+
+      scale_color_gradientn(colours = palette,
+                            na.value = NA,
+                            values = values_palette,
+                            name = "wavelenghts [nm]")+
+      ggtitle(title) +
+      ylab(paste0(sat_name," R [-]")) +
+      geom_abline(slope = 1,
+                  intercept = 0,
+                  alpha = 0.4,
+                  linetype = "dashed")+
+      xlab("Hypstar R [-]")
+    
+    if(is.null(filename)){
+      filename <- paste0("rainbow_",title)
+    }
+    save_path <- paste0(output_directory, filename,".png")
+    
+    ggsave(plot = plot, filename = save_path, height = 5, width = 13)
+    
+    return(plot)
+  }
+  
+  mirai::everywhere(
+    library(ggplot2)
+  )
+  val <- mirai::mirai_map(unique(matchup_result$date),
+                          function(x){return(plot_function(x, matchup_result, point_size, sat_name, values_palette, palette, output_directory, filename))},
+                          plot_function = plot_function,
+                          matchup_result = matchup_result, 
+                          point_size = point_size, 
+                          sat_name = sat_name, 
+                          values_palette = values_palette, 
+                          palette = palette,
+                          output_directory = output_directory, 
+                          filename = filename,
+                          make_title_for_matchup_plots = make_title_for_matchup_plots)[]
   
   
-  plot <- ggplot() +
-    geom_point(data = matchup_result, 
-               mapping = aes(x = Ref_hyp, 
-                             y = Ref_sat,
-                             color = wvl), 
-               size = point_size)+
-    scale_color_gradientn(colours = palette,
-                          na.value = NA,
-                          values = values_palette,
-                          name = "wavelenghts [nm]")+
-    ggtitle(title) +
-    ylab(paste0(sat_name," R [-]")) +
-    geom_abline(slope = 1,
-                intercept = 0,
-                alpha = 0.4,
-                linetype = "dashed")+
-    xlab("Hypstar R [-]")
-  
-  save_path <- paste0(output_directory, filename,".png")
-  
-  ggsave(plot = plot, filename = save_path, height = 5, width = 13)
-  
-  return(plot)
+  return(val)
 }
 
 #plot_relative_errors ----
 plot_relative_errors <- function(matchup_result,
                                  point_size = 3,
-                                 title = make_title_for_matchup_plots(matchup_result),
+                                 
                                  output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                                 filename = paste0("relative_error_",title)){
+                                 filename = NULL){
   relative_error_df <- matchup_result |> tidytable::mutate(relative_error = (Ref_sat-Ref_hyp)/ Ref_hyp *100) 
-  library(ggplot2)
-  plot <- ggplot(data = relative_error_df) +
-    geom_abline(slope = 0, 
-                intercept = 0,
-                linetype = "dashed") +
-    ggtitle(title)+
-    geom_point(mapping = aes(x = wvl, y = relative_error, color = relative_error))+
-    scale_color_gradient2('Relative error (%)',      # titolo della legenda
-                          low = 'red', mid = 'darkgreen', high = 'red',
-                          midpoint = 0)+
-    ylab("Relative error (%)")+
-    xlab("wavelengths [nm]")
+  # library(ggplot2)
   
-  save_path <- paste0(output_directory, filename,".png")
+  plot_function <- function(date_sel, point_size, output_directory, filename , relative_error_df){
+    
+    data_plot <- relative_error_df |> tidytable::filter(date == date_sel)
+    title <- make_title_for_matchup_plots(data_plot)
+    
+    plot <- ggplot(data = data_plot) +
+      geom_abline(slope = 0, 
+                  intercept = 0,
+                  linetype = "dashed") +
+      ggtitle(title)+
+      geom_point(mapping = aes(x = wvl, y = relative_error, color = relative_error), size = point_size)+
+      scale_color_gradient2('Relative error (%)',      # titolo della legenda
+                            low = 'red', mid = 'darkgreen', high = 'red',
+                            midpoint = 0)+
+      ylab("Relative error (%)")+
+      xlab("wavelengths [nm]")
+    
+    if(is.null(filename)){
+      filename <- paste0("relative_error_",title)
+    }
+    
+    save_path <- paste0(output_directory, filename,".png")
+    
+    ggsave(plot = plot, filename = save_path, height = 5, width = 13)
+    
+    return(plot)
+  }
+  mirai::everywhere(
+    library(ggplot2)
+  )
+  val <- mirai::mirai_map(unique(relative_error_df$date),
+                          function(x){return(plot_function(x, point_size, output_directory, filename, relative_error_df))},
+                          plot_function = plot_function,
+                          make_title_for_matchup_plots = make_title_for_matchup_plots,
+                          point_size = point_size, 
+                          output_directory = output_directory, 
+                          filename = filename, 
+                          relative_error_df = relative_error_df)[]
   
-  ggsave(plot = plot, filename = save_path, height = 5, width = 13)
   
-  return(plot)
+  return(val)
 }
 
 #error_propagation ----
@@ -1482,14 +1577,14 @@ make_title_for_matchup_plots <- function(matchup_result){
                  "_TIME-or-ANGLE-",
                  strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]][[1]],
                  "_WINDOW-",
-                 as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[2]]),
-                          error = function(e){return(NULL)})),
+                 invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[2]]),
+                          error = function(e){return(NULL)})))),
                  strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]])]],
                  "_VIEW-",
                  strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[3]],"_")[[1]][[1]],
                  "_WINDOW-",
-                 as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[3]]),
-                                     error = function(e){return(NULL)})),
+                 invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[3]]),
+                                     error = function(e){return(NULL)})))),
                  "deg"
                  )
   return(title)

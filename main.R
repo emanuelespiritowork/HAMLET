@@ -8,10 +8,10 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 
 #Parameter of selection:  
 # library(tidytable)
-# date_start <- "2024-11-12"
-# date_end <- "2024-11-14"
-date_start <- "2025-04-20"
-date_end <- "2025-04-30"
+date_start <- "2024-11-12"
+date_end <- "2024-11-14"
+# date_start <- "2025-04-20"
+# date_end <- "2025-04-30"
 # date_start <- "2025-07-30"
 # date_end <- "2025-08-02"
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/"
@@ -39,18 +39,19 @@ hypstar_data <- get_hypstar_data(date_start = date_start,
 
 #get s2 data 
 s2_data <- get_s2_data(date_start = date_start,
-                       date_end = date_end) 
+                       date_end = date_end)
 
 #matchup to S2
 
 matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
                  hypstar_data = hypstar_data,
                  time_or_sun_angle = T,
-                 just_closest_time_or_sun_angle = F,
-                 range_time_or_sun_angle = 1,
+                 just_closest_time_or_sun_angle = T,
                  just_closest_view_angle = F,
                  range_view_angle = 360,
-                 delVZA = c(0))
+                 delVZA = c(0),
+                 weighted_mean = F,
+                 print_polar = F)
 
 plot <- plot_ribbon(matchup_result_to_S2)
 plot <- plot_rainbow(matchup_result_to_S2)
