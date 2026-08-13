@@ -239,6 +239,7 @@ get_s2_data <- function(date_start,
                         hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                         repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/", #masked S2 data
                         filename = NULL,
+                        number_closest_pixels = 36,
                         output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
                         scale = F){
   # library(tidytable)
@@ -282,7 +283,7 @@ get_s2_data <- function(date_start,
       
       names(four_closest_pixels) <- c("weight","value")
       
-      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:4]#4 is 4 closest pixels
+      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:number_closest_pixels]#4 is 4 closest pixels
       
       #we do not return pixels because there are grid problems
       
@@ -518,6 +519,7 @@ get_EnMAP_data <- function(date_start,
                             hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp", #hypstar shapefile path
                             repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #the main folder of PRISMA data
                             # bands_EnMAP = get_bands_sat(substr("EnMAP",1,2)), #where to find enmap bands
+                           number_closest_pixels = 4,
                            filename = NULL, #if not NULL the enmap data will be saved with this filename
                            output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/", #output directory if filename is not null
                            scale = F){
@@ -560,7 +562,7 @@ get_EnMAP_data <- function(date_start,
       
       names(four_closest_pixels) <- c("weight","value")
       
-      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:4]#4 is 4 closest pixels
+      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:number_closest_pixels]#4 is 4 closest pixels
       
       #we do not return pixels because there are grid problems
       
