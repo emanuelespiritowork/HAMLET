@@ -51,7 +51,7 @@ matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
                  range_view_angle = 360,
                  delVZA = c(0),
                  weighted_mean = F,
-                 print_polar = F)
+                 print_polar = T)
 
 plot <- plot_ribbon(matchup_result_to_S2)
 plot <- plot_rainbow(matchup_result_to_S2)
