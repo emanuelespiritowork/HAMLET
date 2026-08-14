@@ -758,15 +758,15 @@ matchup_function <- function(sat_data,
   }else{
     save_function(view_angle_output, paste0(sat_sensor,"_matchups_from_",min(sat_data$date),"_to_",max(sat_data$date),
                                             "_TIME-or-ANGLE-",
-                                            strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]][[1]],
+                                            strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[1]],
                                             "_WINDOW-",
-                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[2]]),
+                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[2]]),
                                                                 error = function(e){return(NULL)})))),
-                                            strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]])]],
+                                            strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]])]],
                                             "_VIEW-",
-                                            strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[3]],"_")[[1]][[1]],
+                                            strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[3]],"_")[[1]][[1]],
                                             "_WINDOW-",
-                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[3]]),
+                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[3]]),
                                                                 error = function(e){return(NULL)})))),
                                             "deg",
                                             ".csv"), output_directory) 
@@ -810,7 +810,7 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
   
   ref_averaged <- ref_averaged |>
     tibble::add_column(!!!cols_num[!names(cols_num) %in% names_cols_num]) |>
-    tidytable::mutate(number_data_in_window = paste(number_data_in_window,length(std_hyp),sep=";")) |>
+    tidytable::mutate(number_data_in_window = paste(number_data_in_window,length(std_hyp),sep=":")) |>
     tidytable::select(-Ref_hyp,-std_hyp) |>
     tidytable::rename(Ref_hyp = mean_Ref_hyp, 
            std_hyp = mean_std_hyp)
@@ -883,7 +883,7 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
     
     view_angle_output <- view_angle_output |>
       tibble::add_column(!!!cols[!names(cols) %in% names_cols]) |>
-      tidytable::mutate(operations = paste(operations,write_ops,sep=";") )
+      tidytable::mutate(operations = paste(operations,write_ops,sep=":") )
     
   }else{
     #as requested from GC when we do the weighted mean the viewing angle geometry recorded is the one
@@ -893,7 +893,7 @@ view_mean <- function(med_view_angle_output, range_view_angle, weighted_mean){
     
     view_angle_output <- ref_averaged |>
       tibble::add_column(!!!cols[!names(cols) %in% names_cols]) |>
-      tidytable::mutate(operations = paste(operations,write_ops,sep=";") ) |> 
+      tidytable::mutate(operations = paste(operations,write_ops,sep=":") ) |> 
       tidytable::mutate(VAA_hyp = VAA_sat) |>
       tidytable::mutate(VZA_hyp = VZA_sat) |>
       tidytable::ungroup() |>
@@ -922,7 +922,7 @@ view_closest <- function(med_view_angle_output){
   
   closest_output_check <- closest_output |>
     tibble::add_column(!!!cols[!names(cols) %in% names_cols]) |>
-    tidytable::mutate(operations = paste(operations,write_ops,sep=";") ) 
+    tidytable::mutate(operations = paste(operations,write_ops,sep=":") ) 
   
   return(closest_output_check)
 }
@@ -962,7 +962,7 @@ time_or_sun_closest <- function(med_output, time_or_angle_diff){
   
   closest_output_check <- closest_output_check |>
     tibble::add_column(!!!cols[!names(cols) %in% names_cols]) |>
-    tidytable::mutate(operations = paste(operations,write_ops,sep=";") ) 
+    tidytable::mutate(operations = paste(operations,write_ops,sep=":") ) 
   
   return(closest_output_check)
 }
@@ -1007,7 +1007,7 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
   
   ref_averaged <- ref_averaged |>
     tibble::add_column(!!!cols_num[!names(cols_num) %in% names_cols_num]) |>
-    tidytable::mutate(number_data_in_window = paste(number_data_in_window,length(std_hyp),sep=";")) |>
+    tidytable::mutate(number_data_in_window = paste(number_data_in_window,length(std_hyp),sep=":")) |>
     tidytable::select(-Ref_hyp,-std_hyp) |>
     tidytable::rename(Ref_hyp = mean_Ref_hyp, 
            std_hyp = mean_std_hyp) |>
@@ -1087,7 +1087,7 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
     
     time_or_sun_angle_output <- time_or_sun_angle_output |>
       tibble::add_column(!!!cols[!names(cols) %in% names_cols]) |>
-      tidytable::mutate(operations = paste(operations,write_ops,sep=";") ) |> 
+      tidytable::mutate(operations = paste(operations,write_ops,sep=":") ) |> 
       tidytable::group_by(date,sensor,wvl,bands) |>
       tidytable::mutate(SAA_hyp = mean(SAA_hyp)) |>
       tidytable::mutate(SZA_hyp = mean(SZA_hyp)) |>
@@ -1102,7 +1102,7 @@ time_or_sun_mean <- function(med_output, range_time_or_sun_angle, time_or_sun_an
     
     time_or_sun_angle_output <- ref_averaged |>
       tibble::add_column(!!!cols[!names(cols) %in% names_cols]) |>
-      tidytable::mutate(operations = paste(operations,write_ops,sep=";") ) |> 
+      tidytable::mutate(operations = paste(operations,write_ops,sep=":") ) |> 
       tidytable::mutate(SZA_hyp = SZA_sat) |>
       tidytable::mutate(SAA_hyp = SAA_sat) |>
       tidytable::ungroup() |>
@@ -1522,7 +1522,7 @@ save_function <- function(view_angle_output, filename, output_directory){
 plot_polar <- function(time_or_sun_angle_output,
                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                        title = paste0(unique(time_or_sun_angle_output$sensor),"_vs_hypstar",unique(time_or_sun_angle_output$operations)),
-                       filename = paste0("polar_",gsub(";","_",title))){
+                       filename = paste0("polar_",gsub(":","_",title))){
   # library(tidytable)
   selected_data <- time_or_sun_angle_output |> tidytable::mutate(wvl_diff = abs(wvl - 900)) |>
     tidytable::filter(wvl_diff == min(wvl_diff)) |>
@@ -1564,7 +1564,7 @@ plot_polar <- function(time_or_sun_angle_output,
 plot_all_view_spectra <- function(time_or_sun_angle_output,
                                   output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                                   title = paste0(unique(time_or_sun_angle_output$sensor),"_vs_hypstar",unique(time_or_sun_angle_output$operations)),
-                                  filename = paste0("all_view_spectra_",gsub(";","_",title))){
+                                  filename = paste0("all_view_spectra_",gsub(":","_",title))){
   
 }
 
@@ -1577,15 +1577,15 @@ make_title_for_matchup_plots <- function(matchup_result){
                  "T",
                  gsub(":","",unique(matchup_result$time_sat)),
                  "_TIME-or-ANGLE-",
-                 strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]][[1]],
+                 strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[1]],
                  "_WINDOW-",
-                 invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[2]]),
+                 invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[2]]),
                           error = function(e){return(NULL)})))),
-                 strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[2]],"_")[[1]])]],
+                 strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]])]],
                  "_VIEW-",
-                 strsplit(strsplit(unique(matchup_result$operations), ";")[[1]][[3]],"_")[[1]][[1]],
+                 strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[3]],"_")[[1]][[1]],
                  "_WINDOW-",
-                 invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ";")[[1]][[3]]),
+                 invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[3]]),
                                      error = function(e){return(NULL)})))),
                  "deg"
                  )
