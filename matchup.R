@@ -1554,7 +1554,7 @@ plot_polar <- function(time_or_sun_angle_output,
     ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots(time_or_sun_angle_output),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
   
   if(is.null(filename)){
-    filename <- paste0("polat_plot_",title)
+    filename <- paste0("polar_plot_",title)
   }
   
   save_path <- paste0(output_directory, filename,".png")
