@@ -8,8 +8,8 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 
 #Parameter of selection:  
 # library(tidytable)
-date_start <- "2024-11-12"
-date_end <- "2024-11-14"
+date_start <- "2025-04-23"
+date_end <- "2025-04-25"
 # date_start <- "2025-04-20"
 # date_end <- "2025-04-30"
 # date_start <- "2025-07-30"

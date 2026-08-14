@@ -1521,8 +1521,7 @@ save_function <- function(view_angle_output, filename, output_directory){
 #plot_polar ----
 plot_polar <- function(time_or_sun_angle_output,
                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                       title = paste0(unique(time_or_sun_angle_output$sensor),"_vs_hypstar",unique(time_or_sun_angle_output$operations)),
-                       filename = paste0("polar_",gsub(":","_",title))){
+                       filename = NULL){
   # library(tidytable)
   selected_data <- time_or_sun_angle_output |> tidytable::mutate(wvl_diff = abs(wvl - 900)) |>
     tidytable::filter(wvl_diff == min(wvl_diff)) |>
@@ -1552,7 +1551,11 @@ plot_polar <- function(time_or_sun_angle_output,
       breaks = seq(0, 330, by = 30),
       minor_breaks = NULL
     )+
-    ggtitle(label = "polar_plot", subtitle = paste0(title,"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+    ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots(time_or_sun_angle_output),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+  
+  if(is.null(filename)){
+    filename <- paste0("polat_plot_",title)
+  }
   
   save_path <- paste0(output_directory, filename,".png")
   
@@ -1566,6 +1569,24 @@ plot_all_view_spectra <- function(time_or_sun_angle_output,
                                   title = paste0(unique(time_or_sun_angle_output$sensor),"_vs_hypstar",unique(time_or_sun_angle_output$operations)),
                                   filename = paste0("all_view_spectra_",gsub(":","_",title))){
   
+}
+
+make_title_for_polar_plots <- function(time_or_sun_angle_output){
+  title = paste0("SAT-",unique(substr(time_or_sun_angle_output$sensor,1,2)),
+                 "_HYP-",
+                 unique(substr(time_or_sun_angle_output$hyp_sensor,1,4)),
+                 "_DT-", 
+                 gsub("-","",unique(time_or_sun_angle_output$date)),
+                 "T",
+                 gsub(":","",unique(time_or_sun_angle_output$time_sat)),
+                 "_TIME-or-ANGLE-",
+                 strsplit(strsplit(unique(time_or_sun_angle_output$operations), ":")[[1]][[2]],"_")[[1]][[1]],
+                 "_WINDOW-",
+                 invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(time_or_sun_angle_output$operations), ":")[[1]][[2]]),
+                                                                error = function(e){return(NULL)})))),
+                 strsplit(strsplit(unique(time_or_sun_angle_output$operations), ":")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(time_or_sun_angle_output$operations), ":")[[1]][[2]],"_")[[1]])]]
+  )
+  return(title)
 }
 
 make_title_for_matchup_plots <- function(matchup_result){
