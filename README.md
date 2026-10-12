@@ -29,3 +29,7 @@ Mirco Boschetti @ CNR-IREA for advisory
 Vittorio Brando @ CNR-ISMAR for cooperation
 
 Monica Pepe @ CNR-IREA for coordinating the project, scientific supervisioning and organization
+
+---
+# Publication
+https://doi.org/10.5194/isprs-archives-XLVIII-M-12-2026-97-2026
