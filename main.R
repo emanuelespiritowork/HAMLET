@@ -14,11 +14,9 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 # date_end <- "2025-04-30"
 date_start <- "2025-04-23"
 date_end <- "2025-04-25"
-repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/"
-PRISMA_level_product <- "L2D"
-processing_level_prs <- "coreg" #or 0_read
+repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" #or //10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2
 mirai::daemons(0)
-mirai::daemons(4)
+mirai::daemons(8)
 
 #minVZA = ?, #minimum View Zenith Angle
 #maxVZA = ?, #maximum View Zenith Angle
@@ -61,9 +59,7 @@ plot <- plot_relative_errors(matchup_result_to_S2)
 
 PRISMA_data <- get_PRISMA_data(date_start = date_start,
                                date_end = date_end,
-                               repo_root_path = repo_root_path_prs,
-                               processing_level = processing_level_prs,
-                               PRISMA_level_product = PRISMA_level_product) 
+                               repo_root_path = repo_root_path_prs) 
 
 #matchup to PRISMA
 matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,

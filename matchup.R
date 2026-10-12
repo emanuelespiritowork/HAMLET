@@ -233,6 +233,239 @@ hypstar_spectral_resampling <- function(dataset_res, #station data
   
 }
 
+pixel_aggregation_function <- function(function_type = "exact", #choose between "exact" and "terra"
+                                       aggregation_type = "mean", #choose between "mean" and "weight"
+                                       raster, 
+                                       vector,
+                                       max_number_of_pixels){
+  if(function_type == "exact"){
+    #pixel extraction done using exact_extract
+    pixel_extraction <- exactextractr::exact_extract(raster, vector, coverage_area = F,
+                                                     include_cols = names(vector)[names(vector) != "geometry"]) |>
+      tidytable::bind_rows() |>
+      tidytable::select(-FID,-X,-y)
+  }else if(function_type == "terra"){
+    #pixel extraction done using terra
+    pixel_extraction <- terra::extract(raster, vector, fun = "table", touches = T, weights = T) |>
+      tidytable::select(-ID) |>
+      `names<-`(c("value","coverage_fraction"))
+  }else{
+    stop("Error, choose a function_type among 'exact' and 'terra'")
+  }
+  
+  if(aggregation_type == "mean"){
+    #here we perform the simple mean using all the max_number_of_pixels closest pixels  
+    pixel_aggregation <- pixel_extraction |>
+      tidytable::arrange(desc(coverage_fraction)) |>
+      tidytable::select(-coverage_fraction) |>
+      tidytable::filter(tidytable::row_number() <= max_number_of_pixels) |>
+      tidytable::summarise(sd = sd(value, na.rm = T), mean = mean(value, na.rm=T))
+  }else if(aggregation_type == "weight"){
+    #here we perform the weighted mean using all the max_number_of_pixels closest pixels
+    pixel_aggregation <- pixel_extraction |>
+      tidytable::arrange(desc(coverage_fraction)) |>
+      tidytable::filter(tidytable::row_number() <= max_number_of_pixels) |>
+      tidytable::summarise(mean = weighted.mean(x = value, w = coverage_fraction, na.rm=T),
+                           sd = sd(value, na.rm = T))
+  }else{
+    stop("Error, choose an aggregation_type among 'mean' and 'weight'.")
+  }
+  
+  return(pixel_aggregation)
+}
+
+get_sat_date <- function(satellite,product_path){
+  if(satellite == "S2"){
+    return(as.Date(substring(basename(product_path),8,15),"%Y%m%d"))
+  }
+    
+  if(satellite == "PRS"){
+    read_angle_and_time <- read.csv(list.files(path = product_path,
+                                               pattern = "all_angles_file.csv",
+                                               full.names = T,
+                                               recursive = T))
+    return(as.Date(substring(read_angle_and_time$date, 1,10),"%Y-%m-%d"))
+  }
+  if(satellite == "En"){
+    return(as.Date(substring(basename(product_path),30,37),"%Y%m%d"))
+  }
+}
+
+get_sat_time <- function(satellite,product_path){
+  if(satellite == "S2"){
+    return(hms::as_hms(substring(sub("\\s+$", "", gsub('(.{2})', '\\1:',substring(basename(product_path),17,22))),1,8)))
+  }
+  
+  if(satellite == "PRS"){
+    read_angle_and_time <- read.csv(list.files(path = product_path,
+                                               pattern = "all_angles_file.csv",
+                                               full.names = T,
+                                               recursive = T))
+    return(hms::as_hms(substring(read_angle_and_time$date, 12,19)))
+  }
+  
+  if(satellite == "En"){
+    return(hms::as_hms(substring(sub("\\s+$", "", gsub('(.{2})', '\\1:', substring(basename(product_path),39,44))),1,8)))
+    
+  }
+    
+}
+
+get_sat_sensor_ID <- function(satellite,product_path){
+  if(satellite == "S2"){
+    return(substring(basename(product_path),24,26))
+  }
+  
+  if(satellite == "PRS"){
+    return("PRISMA")
+  }
+  
+  if(satellite == "En"){
+    return("EnMAP")
+  }
+  
+  stop("Error, not valid satellite")
+}
+
+get_sat_bands_list_and_names <- function(satellite,product_path){
+  if(satellite == "S2"){
+    list_of_tifs <- list.files(product_path, full.names = T, recursive = T,
+                               pattern = "\\.tif$")
+    
+    bands <- list_of_tifs[!stringr::str_detect(list_of_tifs, "mask")]
+    
+    list_of_rasters <- lapply(bands, terra::rast)
+    
+    extract_names <- stringr::str_match(bands, "m_\\s*(.*?)\\s*.tif")[,2]
+    
+    return(list(list_of_rasters,extract_names))
+  }
+  
+  if(satellite == "PRS"){
+    if(grepl(pattern = "L1", product_path)){
+      search_for = "CARST"
+    }else if(grepl(pattern = "L2", product_path)){
+      search_for = "CRST"
+    }
+    image_path <- list.files(product_path, full.names = T, recursive = T, pattern = paste0("\\",search_for,".tif$"))
+    
+    print(image_path)
+    
+    image <- terra::rast(image_path)
+    
+    list_of_rasters <- lapply(1:terra::nlyr(image), function(x){return(image[[x]])})
+    
+    extract_names <- unlist(lapply(strsplit(names(image)," "), function(x){return(x[[1]])}))
+    
+    return(list(list_of_rasters,extract_names))
+  }
+  
+  if(satellite == "En"){
+    print(product_path)
+    
+    image_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
+                             pattern = "\\.BSQ$")
+    
+    image <- terra::rast(image_path)
+    
+    list_of_rasters <- lapply(1:terra::nlyr(image), function(x){return(image[[x]])})
+    
+    extract_names <- unlist(lapply(strsplit(names(image)," "), function(x){return(paste0("B",x[[2]]))}))
+    return(list(list_of_rasters,extract_names))
+  }
+}
+
+get_sat_angles <- function(satellite, product_path, bands_statistics, bandnames){
+  if(satellite == "S2"){
+    angles <- bands_statistics |>
+      tidytable::select(mean) |>
+      tidytable::rename(value = mean) |>
+      tidytable::mutate(bands = bandnames, 
+                        value = as.numeric(value)) |>
+      tidytable::filter(!grep(bands, pattern = "^B.*")) |>
+      tidytable::pivot_wider(names_from = bands, values_from = value)
+  }
+  if(satellite == "PRS"){
+    read_angle_and_time <- tidytable::fread(list.files(path = product_path,
+                                                       pattern = "all_angles_file.csv",
+                                                       full.names = T,
+                                                       recursive = T))
+    
+    angles <- read_angle_and_time |>
+      tidytable::rename(SAA = sunaz,
+                        SZA = sunzen,
+                        VZA = sensor_zenith,
+                        VAA = sensor_azimuth) |>
+      tidytable::select(VAA,VZA,SZA,SAA)
+  }
+  if(satellite == "En"){
+    metadata_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
+                                pattern = "\\METADATA.XML$")
+    
+    data <- XML::xmlParse(metadata_path)
+    
+    xml_data <- XML::xmlToList(data)
+    
+    sunElevationAngle <- as.numeric(xml_data[["specific"]][["sunElevationAngle"]][["center"]][["text"]])
+    if(sunElevationAngle < 0){
+      print("Warning!. Elevation Angle less than zero. ")
+    }
+    sunZenithAngle <- 90-sunElevationAngle
+    sunAzimithAngle <- as.numeric(xml_data[["specific"]][["sunAzimuthAngle"]][["center"]][["text"]])
+    viewingZenithAngle <- as.numeric(xml_data[["specific"]][["viewingZenithAngle"]][["center"]][["text"]])
+    viewingAzimithAngle <- as.numeric(xml_data[["specific"]][["viewingAzimuthAngle"]][["center"]][["text"]])
+    
+    angles <- data.frame(SAA = sunAzimithAngle,
+                         SZA = sunZenithAngle,
+                         VZA = viewingZenithAngle,
+                         VAA = viewingAzimithAngle) |>
+      tidytable::as_tidytable()
+  }
+  return(angles)
+}
+
+get_statistics_dataset <- function(satellite,
+                                   product_path, 
+                                   hypstar_point_buffered, 
+                                   aggregation_type, 
+                                   number_closest_pixels, 
+                                   function_type){
+  
+  print(product_path)
+  
+  bands_data <- get_sat_bands_list_and_names(satellite = satellite,
+                                             product_path = product_path)
+  
+  date_ID <- get_sat_date(satellite = satellite,
+                       product_path = product_path)
+  
+  time_ID <- get_sat_time(satellite = satellite,
+                       product_path = product_path)
+  
+  sensor_ID <- get_sat_sensor_ID(satellite = satellite,
+                                 product_path = product_path)
+  
+  bands_statistics <- lapply(bands_data[[1]], pixel_aggregation_function, vector = hypstar_point_buffered,
+                             max_number_of_pixels = number_closest_pixels, aggregation_type = aggregation_type,
+                             function_type = function_type) |>
+    tidytable::bind_rows()
+  
+  angles <- get_sat_angles(satellite = satellite, product_path = product_path, bands_statistics = bands_statistics,
+                           bandnames = bands_data[[2]])
+
+  statistics_pivoted <- bands_statistics |> 
+    tidytable::mutate(bands = bands_data[[2]]) |>
+    tidytable::rename(Ref = mean) |>
+    tidytable::filter(grep(bands, pattern = "^B.*")) |>
+    tidytable::mutate(date = date_ID) |>
+    tidytable::mutate(time = time_ID) |>
+    tidytable::mutate(sensor = sensor_ID) |>
+    tidytable::bind_cols(angles) |>
+    data.table::as.data.table()
+  
+  return(statistics_pivoted)
+}
+
 #get_s2_data ----
 get_s2_data <- function(date_start, 
                         date_end,
@@ -241,8 +474,9 @@ get_s2_data <- function(date_start,
                         filename = NULL,
                         number_closest_pixels = 36,
                         output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
-                        scale = F){
-  # library(tidytable)
+                        scale = F,
+                        aggregation_type = "mean", # this can be 1,2,3 depending on: 
+                        function_type = "exact"){
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
   years <- as.character(year_start:year_end)
@@ -261,91 +495,21 @@ get_s2_data <- function(date_start,
   
   hypstar_point <- sf::st_read(hypstar_point_path)
   
-  get_four_closest_pixels_statistic <- function(band, hypstar_point){
-    #print(band)
-    #create a raster with a buffer of 10 m around the hypstar point
-    hypstar_point_buffer <- sf::st_buffer(hypstar_point,dist = 10)#10 is for 4 closest pixels
-    #sf::st_write(hypstar_point_buffer,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/hypstar_buffer.shp")
-    band_raster <- invisible(terra::rast(band))
-    
-    four_closest_pixels <- NULL
-    four_closest_pixels <- tryCatch(t(terra::extract(band_raster, hypstar_point_buffer, fun = "table", 
-                                          touches = F, ID = F, weights = T)), 
-                                    error = function(e){NULL})
-    if(is.null(four_closest_pixels)){
-      output <- NA
-    }else{
-      value <- as.numeric(row.names(four_closest_pixels))
-      
-      four_closest_pixels <- data.table::as.data.table(four_closest_pixels)
-      
-      four_closest_pixels$value <- value
-      
-      names(four_closest_pixels) <- c("weight","value")
-      
-      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:number_closest_pixels]#4 is 4 closest pixels
-      
-      #we do not return pixels because there are grid problems
-      
-      #statistics to return
-      output <- c(mean(four_closest_pixels$value, na.rm = T),sd(four_closest_pixels$value, na.rm = T))
-    }
-    
-    return(output)
-  }
+  hypstar_point_buffered <- sf::st_buffer(hypstar_point, dist = 30) 
   
-  get_statistics_dataset <- function(product_path, hypstar_point){
-    # library(tidytable)
-    
-    sensor_ID <- substring(basename(product_path),24,26)
-    
-    list_of_tifs <- list.files(product_path, full.names = T, recursive = T,
-                               pattern = "\\.tif$")
-    
-    bands <- list_of_tifs[!stringr::str_detect(list_of_tifs, "mask")]
-    
-    extract_names <- stringr::str_match(bands, "m_\\s*(.*?)\\s*.tif")[,2]
-    
-    bands_statistics <- lapply(bands, get_four_closest_pixels_statistic, hypstar_point = hypstar_point)
-    
-    bands_statistics_mean <- data.table::as.data.table(bands_statistics)[1,]
-    
-    bands_statistics_sd <- data.table::as.data.table(bands_statistics)[2,]
-    
-    statistics_dataset <- data.table::data.table()
-    
-    angles <- statistics_dataset |> tidytable::mutate(bands = extract_names) |>
-      tidytable::mutate(value = as.numeric(bands_statistics_mean)) |>
-      tidytable::filter(!grep(bands, pattern = "^B.*")) |>
-      tidytable::pivot_wider(names_from = bands, values_from = value)
-    
-    statistics_pivoted <- statistics_dataset |> tidytable::mutate(bands = extract_names) |>
-      tidytable::mutate(Ref = as.numeric(bands_statistics_mean)) |>
-      tidytable::mutate(sd = as.numeric(bands_statistics_sd)) |>
-      tidytable::filter(grep(bands, pattern = "^B.*")) |>
-      tidytable::mutate(date = as.Date(substring(basename(product_path),8,15),"%Y%m%d")) |>
-      tidytable::mutate(time = substring(basename(product_path),16,22)) |> 
-      tidytable::mutate(time = substring(time,2,8)) |>
-      tidytable::mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) |>
-      tidytable::mutate(time = hms::as_hms(substring(time,1,8))) |>
-      #pivot_wider(names_from = bands, values_from = Ref) |>
-      tidytable::mutate(sensor = sensor_ID) |>
-      tidytable::bind_cols(angles) |>
-      data.table::as.data.table()
-    
-    #statistics_dataset$bands <- extract_names
-    
-    #statistics_dataset$Ref <- as.numeric(bands_statistics)
-    
-    #here we want to extract also SZA, SAA, VZA, VAA
-    
-    return(statistics_pivoted)
-  }
-  
-  all_datasets <- mirai::mirai_map(product_paths,function(x){return(get_statistics_dataset(x,hypstar_point))},
+  all_datasets <- mirai::mirai_map(product_paths, function(x){return(get_statistics_dataset(satellite,x,hypstar_point_buffered,aggregation_type,number_closest_pixels,function_type))},
                                    get_statistics_dataset = get_statistics_dataset,
-                                   get_four_closest_pixels_statistic = get_four_closest_pixels_statistic,
-                                   hypstar_point = hypstar_point)[]
+                                   pixel_aggregation_function = pixel_aggregation_function,
+                                   hypstar_point_buffered = hypstar_point_buffered,
+                                   aggregation_type = aggregation_type, 
+                                   number_closest_pixels = number_closest_pixels, 
+                                   function_type = function_type,
+                                   satellite = "S2",
+                                   get_sat_date = get_sat_date,
+                                   get_sat_time = get_sat_time,
+                                   get_sat_sensor_ID = get_sat_sensor_ID,
+                                   get_sat_bands_list_and_names =get_sat_bands_list_and_names,
+                                   get_sat_angles = get_sat_angles)[]
   
   binded <- dplyr::bind_rows(all_datasets)|>
     stats::na.omit() 
@@ -372,131 +536,50 @@ get_s2_data <- function(date_start,
 #get_PRISMA_data ----
 get_PRISMA_data <- function(date_start, 
                             date_end,
-                            PRISMA_level_product = "L1",
-                            processing_level = "Atcor_regrid_crop_smooth",
                             hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
-                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/", #PRISMA data
+                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1", # o //10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2
                             filename = NULL,
                             output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
                             number_closest_pixels = 4,
-                            scale = F){
-  #here we need to choose the format of PRISMA data
-  # library(tidytable)
+                            scale = F,
+                            aggregation_type = "mean", 
+                            function_type = "exact"){
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
   years <- as.character(year_start:year_end)
   repo_year_path <- paste0(repo_root_path, years, "/", PRISMA_level_product, "/")
   
   #now you enter in the folder where there are products
-  get_products_paths <- function(year_path){
-    list_of_products <- list.dirs(year_path, full.names = T, recursive = F)
-    list_of_products <- list_of_products[grepl("PRS",list_of_products)]
-    if(grepl("OFFL",basename(list_of_products[1]))){
-      OFFL_offset <- 5
-    }else{
-      OFFL_offset <- 0
-    }
-    if(grepl("STD",basename(list_of_products[1]))){
-      STD_offset <- 4
-    }else{
-      STD_offset <- 0
-    }
-    list_of_dates <- as.Date(substring(basename(list_of_products),6+OFFL_offset+STD_offset+nchar(PRISMA_level_product),13+OFFL_offset+STD_offset+nchar(PRISMA_level_product)),"%Y%m%d")
-    return(list_of_products[list_of_dates > date_start & list_of_dates < date_end])
-  }
-  
-  product_paths <- unlist(lapply(repo_year_path, get_products_paths))
+  #TEMPORARY
+  list_of_products <- list.dirs(path = repo_root_path,full.names = T,recursive = F)
+  list_of_dates <- lapply(list_of_products,function(x){return(as.Date(substring(strsplit(basename(x), split = "_")[[1]][[5]],"1","8"), format = "%Y%m%d"))})
+  product_paths <- unlist(list_of_products[list_of_dates > as.Date(date_start) & list_of_dates < as.Date(date_end)])
   
   hypstar_point <- sf::st_read(hypstar_point_path)
   
-  get_four_closest_pixels_statistic <- function(band){
-    #print(band)
-    #create a raster with a buffer of 10 m around the hypstar point
-    hypstar_point_buffer <- sf::st_buffer(hypstar_point,dist = 30)#30 is for 4 closest pixels
-    #sf::st_write(hypstar_point_buffer,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/hypstar_buffer.shp")
-    #band_raster <- invisible(terra::rast(band))
-    
-    four_closest_pixels <- NULL
-    four_closest_pixels <- tryCatch(t(terra::extract(band, hypstar_point_buffer, fun = "table", 
-                                                     touches = F, ID = F, weights = T)), 
-                                    error = function(e){NULL})
-    if(is.null(four_closest_pixels)){
-      output <- NA
-    }else{
-      value <- as.numeric(row.names(four_closest_pixels))
-      
-      four_closest_pixels <- data.table::as.data.table(four_closest_pixels)
-      
-      four_closest_pixels$value <- value
-      
-      names(four_closest_pixels) <- c("weight","value")
-      
-      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:number_closest_pixels]#4 is 4 closest pixels
-      
-      #we do not return pixels because there are grid problems
-      
-      #statistics to return
-      output <- c(mean(four_closest_pixels$value, na.rm = T),sd(four_closest_pixels$value, na.rm = T))
-    }
-    
-    return(output)
-  }
+  hypstar_point_buffered <- sf::st_buffer(hypstar_point, dist = 30) 
   
-  get_statistics_dataset <- function(product_path){
-    # library(tidytable)
-    
-    #print(product_path)
-    
-    sensor_ID <- "PRISMA"
-    
-    image_path <- list.files(paste0(product_path, "/PRISTAR_processing/", processing_level, "/"), full.names = T, recursive = T,
-                               pattern = "\\.tif$")
-    
-    print(image_path)
-    
-    image <- terra::rast(image_path)
-    
-    create_list_of_rasters <- function(band){
-      return(image[[band]])
-    }
-    
-    bands <- lapply(1:230, create_list_of_rasters)
-    
-    bands_statistics <- suppressWarnings(lapply(bands, get_four_closest_pixels_statistic))
-    
-    bands_statistics_mean <- data.table::as.data.table(bands_statistics)[1,]
-    
-    bands_statistics_sd <- data.table::as.data.table(bands_statistics)[2,]
-    
-    statistics_dataset <- data.table::data.table()
-    
-    read_angle_and_time <- read.csv(paste0(product_path,"/PRISTAR_processing/atcor/all_angles_file.csv"))
-    
-    statistics_pivoted <- statistics_dataset |> tidytable::mutate(bands = paste0("B",1:230)) |>
-      tidytable::mutate(Ref = as.numeric(bands_statistics_mean)) |>
-      tidytable::mutate(sd = as.numeric(bands_statistics_sd)) |>
-      tidytable::mutate(date = as.Date(substring(read_angle_and_time$date, 1,10),"%Y-%m-%d")) |>
-      tidytable::mutate(time = hms::as_hms(substring(read_angle_and_time$date, 12,19))) |> 
-      #pivot_wider(names_from = bands, values_from = c(Ref,sd)) |>
-      tidytable::mutate(sensor = sensor_ID) |>
-      tidytable::mutate(SAA = read_angle_and_time$sunaz) |>
-      tidytable::mutate(SZA = read_angle_and_time$sunzen) |>
-      tidytable::mutate(VZA = read_angle_and_time$sensor_zenith) |>
-      tidytable::mutate(VAA = read_angle_and_time$sensor_azimuth) |>
-      data.table::as.data.table()
-    
-    return(statistics_pivoted)
-  }
-  
-  all_datasets <- lapply(product_paths,get_statistics_dataset)
+  all_datasets <- mirai::mirai_map(product_paths, function(x){return(get_statistics_dataset(satellite,x,hypstar_point_buffered,aggregation_type,number_closest_pixels,function_type))},
+                                   get_statistics_dataset = get_statistics_dataset,
+                                   pixel_aggregation_function = pixel_aggregation_function,
+                                   hypstar_point_buffered = hypstar_point_buffered,
+                                   aggregation_type = aggregation_type, 
+                                   number_closest_pixels = number_closest_pixels, 
+                                   function_type = function_type,
+                                   satellite = "PRS",
+                                   get_sat_date = get_sat_date,
+                                   get_sat_time = get_sat_time,
+                                   get_sat_sensor_ID = get_sat_sensor_ID,
+                                   get_sat_bands_list_and_names =get_sat_bands_list_and_names,
+                                   get_sat_angles = get_sat_angles)[]
   
   binded <- dplyr::bind_rows(all_datasets)|>
     stats::na.omit()
   
   if(scale){
-     binded <- binded |> 
-       tidytable::mutate(Ref = Ref/10000) |>
-       tidytable::mutate(sd = sd/10000)
+    binded <- binded |> 
+      tidytable::mutate(Ref = Ref/10000) |>
+      tidytable::mutate(sd = sd/10000)
   }
   
   with_wvl <- add_wvl(binded) |>
@@ -514,16 +597,16 @@ get_PRISMA_data <- function(date_start,
 
 #get_EnMAP_data ----
 get_EnMAP_data <- function(date_start, 
-                            date_end,
+                           date_end,
                            EnMAP_level_product = "L2A", #enmap level product
-                            hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp", #hypstar shapefile path
-                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #the main folder of PRISMA data
-                            # bands_EnMAP = get_bands_sat(substr("EnMAP",1,2)), #where to find enmap bands
+                           hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp", #hypstar shapefile path
+                           repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #the main folder of EnMAP data
                            number_closest_pixels = 4,
                            filename = NULL, #if not NULL the enmap data will be saved with this filename
                            output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/", #output directory if filename is not null
-                           scale = F){
-  # library(tidytable)
+                           scale = F,
+                           aggregation_type = "mean", 
+                           function_type = "exact"){
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
   years <- as.character(year_start:year_end)
@@ -540,108 +623,21 @@ get_EnMAP_data <- function(date_start,
   
   hypstar_point <- sf::st_read(hypstar_point_path)
   
-  get_four_closest_pixels_statistic <- function(band){
-    #print(band)
-    #create a raster with a buffer of 10 m around the hypstar point
-    hypstar_point_buffer <- sf::st_buffer(hypstar_point,dist = 30)#30 is for 4 closest pixels
-    #sf::st_write(hypstar_point_buffer,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/hypstar_buffer.shp")
-    #band_raster <- invisible(terra::rast(band))
-    
-    four_closest_pixels <- NULL
-    four_closest_pixels <- tryCatch(t(terra::extract(band, hypstar_point_buffer, fun = "table", 
-                                                     touches = F, ID = F, weights = T)), 
-                                    error = function(e){NULL})
-    if(is.null(four_closest_pixels)){
-      output <- NA
-    }else{
-      value <- as.numeric(row.names(four_closest_pixels))
-      
-      four_closest_pixels <- data.table::as.data.table(four_closest_pixels)
-      
-      four_closest_pixels$value <- value
-      
-      names(four_closest_pixels) <- c("weight","value")
-      
-      four_closest_pixels <- four_closest_pixels[order(weight, decreasing = T)][1:number_closest_pixels]#4 is 4 closest pixels
-      
-      #we do not return pixels because there are grid problems
-      
-      #statistics to return
-      output <- c(mean(four_closest_pixels$value, na.rm = T),sd(four_closest_pixels$value, na.rm = T))
-    }
-    
-    return(output)
-  }
+  hypstar_point_buffered <- sf::st_buffer(hypstar_point, dist = 30) 
   
-  get_statistics_dataset <- function(product_path){
-    # library(tidytable)
-    
-    print(product_path)
-    
-    sensor_ID <- "EnMAP"
-    
-    image_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
-                             pattern = "\\.BSQ$")
-    
-    metadata_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
-                                pattern = "\\METADATA.XML$")
-    
-    #metadata_path <- "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/2024/L2A/ENMAP01-____L2A-DT0000081830_20240714T104028Z_001_V010501_20241111T160454Z/ENMAP01-____L2A-DT0000081830_20240714T104028Z_001_V010501_20241111T160454Z-METADATA.XML"
-    
-    image <- terra::rast(image_path)
-    
-    create_list_of_rasters <- function(band){
-      return(image[[band]])
-    }
-    
-    bands <- lapply(1:224, create_list_of_rasters)
-    
-    bands_statistics <- suppressWarnings(lapply(bands, get_four_closest_pixels_statistic))
-    
-    bands_statistics_mean <- data.table::as.data.table(bands_statistics)[1,]
-    
-    bands_statistics_sd <- data.table::as.data.table(bands_statistics)[2,]
-    
-    data <- XML::xmlParse(metadata_path)
-    
-    xml_data <- XML::xmlToList(data)
-    
-    sunElevationAngle <- as.numeric(xml_data[["specific"]][["sunElevationAngle"]][["center"]][["text"]])
-    if(sunElevationAngle < 0){
-      print("Warning!. Elevation Angle less than zero. ")
-    }
-    sunZenithAngle <- 90-sunElevationAngle
-    sunAzimithAngle <- as.numeric(xml_data[["specific"]][["sunAzimuthAngle"]][["center"]][["text"]])
-    viewingZenithAngle <- as.numeric(xml_data[["specific"]][["viewingZenithAngle"]][["center"]][["text"]])
-    viewingAzimithAngle <- as.numeric(xml_data[["specific"]][["viewingAzimuthAngle"]][["center"]][["text"]])
-    
-    statistics_dataset <- data.table::data.table()
-    
-    statistics_pivoted <- statistics_dataset |> tidytable::mutate(bands = paste0("B",1:224)) |>
-      tidytable::mutate(Ref = as.numeric(bands_statistics_mean)) |>
-      tidytable::mutate(sd = as.numeric(bands_statistics_sd)) |>
-      tidytable::mutate(date = as.Date(substring(basename(product_path),30,37),"%Y%m%d")) |>
-      tidytable::mutate(time = substring(basename(product_path),38,44)) |> 
-      tidytable::mutate(time = substring(time,2,8)) |>
-      tidytable::mutate(time = sub("\\s+$", "", gsub('(.{2})', '\\1:', time))) |>
-      tidytable::mutate(time = hms::as_hms(substring(time,1,8))) |>
-      tidytable::mutate(sensor = sensor_ID) |>
-      tidytable::mutate(SAA = sunAzimithAngle) |>
-      tidytable::mutate(SZA = sunZenithAngle) |>
-      tidytable::mutate(VZA = viewingZenithAngle) |>
-      tidytable::mutate(VAA = viewingAzimithAngle) |>
-      data.table::as.data.table()
-    
-    #statistics_dataset$bands <- extract_names
-    
-    #statistics_dataset$Ref <- as.numeric(bands_statistics)
-    
-    #here we want to extract also SZA, SAA, VZA, VAA
-    
-    return(statistics_pivoted)
-  }
-  
-  all_datasets <- lapply(product_paths,get_statistics_dataset)
+  all_datasets <- mirai::mirai_map(product_paths, function(x){return(get_statistics_dataset(satellite,x,hypstar_point_buffered,aggregation_type,number_closest_pixels,function_type))},
+                                   get_statistics_dataset = get_statistics_dataset,
+                                   pixel_aggregation_function = pixel_aggregation_function,
+                                   hypstar_point_buffered = hypstar_point_buffered,
+                                   aggregation_type = aggregation_type, 
+                                   number_closest_pixels = number_closest_pixels, 
+                                   function_type = function_type,
+                                   satellite = "En",
+                                   get_sat_date = get_sat_date,
+                                   get_sat_time = get_sat_time,
+                                   get_sat_sensor_ID = get_sat_sensor_ID,
+                                   get_sat_bands_list_and_names =get_sat_bands_list_and_names,
+                                   get_sat_angles = get_sat_angles)[]
   
   binded <- dplyr::bind_rows(all_datasets)
   
