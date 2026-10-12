@@ -51,9 +51,9 @@ matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
                  weighted_mean = F,
                  print_polar = T)
 
-plot <- plot_ribbon(matchup_result_to_S2)
-plot <- plot_rainbow(matchup_result_to_S2)
-plot <- plot_relative_errors(matchup_result_to_S2)
+plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_S2)
+plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_S2)
+plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_S2)
 
 #get PRISMA data 
 
@@ -72,9 +72,9 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              weighted_mean = F,
                                              print_polar = T)
 
-plot <- plot_ribbon(matchup_result_to_PRISMA)
-plot <- plot_rainbow(matchup_result_to_PRISMA)
-plot <- plot_relative_errors(matchup_result_to_PRISMA)
+plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_PRISMA)
+plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_PRISMA)
+plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_PRISMA)
 
 matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              hypstar_data = hypstar_data,
@@ -87,9 +87,9 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              weighted_mean = F,
                                              print_polar = T)
 
-plot <- plot_ribbon(matchup_result_to_PRISMA)
-plot <- plot_rainbow(matchup_result_to_PRISMA)
-plot <- plot_relative_errors(matchup_result_to_PRISMA)
+plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_PRISMA)
+plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_PRISMA)
+plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_PRISMA)
 
 matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              hypstar_data = hypstar_data,
@@ -101,10 +101,9 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                                      delVZA = c(0),
                                              weighted_mean = F,
                                              print_polar = T)
-
-plot <- plot_ribbon(matchup_result_to_PRISMA)
-plot <- plot_rainbow(matchup_result_to_PRISMA)
-plot <- plot_relative_errors(matchup_result_to_PRISMA)
+plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_PRISMA)
+plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_PRISMA)
+plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_PRISMA)
 
 #get EnMAP data
 
@@ -122,9 +121,9 @@ matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                                      delVZA = c(0),
                                             print_polar = T)
 
-plot <- plot_ribbon(matchup_result_to_EnMAP)
-plot <- plot_rainbow(matchup_result_to_EnMAP)
-plot <- plot_relative_errors(matchup_result_to_EnMAP)
+plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_EnMAP)
+plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_EnMAP)
+plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_EnMAP)
 
 matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                             hypstar_data = hypstar_data,
@@ -135,9 +134,9 @@ matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                                      range_view_angle = 30,
                                                      delVZA = c(0))
 
-plot <- plot_ribbon(matchup_result_to_EnMAP)
-plot <- plot_rainbow(matchup_result_to_EnMAP)
-plot <- plot_relative_errors(matchup_result_to_EnMAP)
+plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_EnMAP)
+plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_EnMAP)
+plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_EnMAP)
 
 # ############################
 # write.table(matchup_result_to_PRISMA,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/matchupPRISMA_1hour_range.csv",

@@ -11,8 +11,6 @@ get_hypstar_data <- function(date_start,
                              bands_HYP = get_bands_station("HYPSTAR_JDS"),
                              filename = NULL,
                              output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
-  #library(tidytable)
-  
   folder_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE)) |>
     tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
            time = substr(folder_name, 12, 20)) |>
@@ -233,6 +231,7 @@ hypstar_spectral_resampling <- function(dataset_res, #station data
   
 }
 
+#pixel_aggregation_function ----
 pixel_aggregation_function <- function(function_type = "exact", #choose between "exact" and "terra"
                                        aggregation_type = "mean", #choose between "mean" and "weight"
                                        raster, 
@@ -274,6 +273,7 @@ pixel_aggregation_function <- function(function_type = "exact", #choose between 
   return(pixel_aggregation)
 }
 
+#get_sat_date ----
 get_sat_date <- function(satellite,product_path){
   if(satellite == "S2"){
     return(as.Date(substring(basename(product_path),8,15),"%Y%m%d"))
@@ -291,6 +291,7 @@ get_sat_date <- function(satellite,product_path){
   }
 }
 
+#get_sat_time ----
 get_sat_time <- function(satellite,product_path){
   if(satellite == "S2"){
     return(hms::as_hms(substring(sub("\\s+$", "", gsub('(.{2})', '\\1:',substring(basename(product_path),17,22))),1,8)))
@@ -311,6 +312,7 @@ get_sat_time <- function(satellite,product_path){
     
 }
 
+#get_sat_sensor_ID ----
 get_sat_sensor_ID <- function(satellite,product_path){
   if(satellite == "S2"){
     return(substring(basename(product_path),24,26))
@@ -327,6 +329,7 @@ get_sat_sensor_ID <- function(satellite,product_path){
   stop("Error, not valid satellite")
 }
 
+#get_sat_bands_list_and_names ----
 get_sat_bands_list_and_names <- function(satellite,product_path){
   if(satellite == "S2"){
     list_of_tifs <- list.files(product_path, full.names = T, recursive = T,
@@ -375,6 +378,7 @@ get_sat_bands_list_and_names <- function(satellite,product_path){
   }
 }
 
+#get_sat_angles ----
 get_sat_angles <- function(satellite, product_path, bands_statistics, bandnames){
   if(satellite == "S2"){
     angles <- bands_statistics |>
@@ -424,6 +428,7 @@ get_sat_angles <- function(satellite, product_path, bands_statistics, bandnames)
   return(angles)
 }
 
+#get_statistics_dataset ----
 get_statistics_dataset <- function(satellite,
                                    product_path, 
                                    hypstar_point_buffered, 
@@ -738,8 +743,9 @@ matchup_function <- function(sat_data,
                                                          weighted_mean = weighted_mean)
   
   if(print_polar){
-    plot_polar(time_or_sun_angle_output = time_or_sun_angle_output,
-               output_directory = gsub("csv","plots", output_directory))
+    plot_divide_by_date(plot_polar, dataset = time_or_sun_angle_output)
+    # plot_polar(time_or_sun_angle_output = time_or_sun_angle_output,
+    #            output_directory = gsub("csv","plots", output_directory))
   }
   
   #VIEW ANGLE PROBLEM
@@ -771,6 +777,107 @@ matchup_function <- function(sat_data,
   
   return(view_angle_output)
   
+}
+
+#matchup_function_v2 ----
+matchup_function_v2 <- function(sat_data, 
+                             hypstar_data,
+                             delVZA = c(""), #vector deleting View Zenith Angle inside hypstar dataset
+                             delVAA = c(""), #vector deleting View Azimuth Angle inside hypstar datasets
+                             
+                             only_same_date = T,#only same date comparison accepted (true) or closest date (false)
+                             
+                             time_or_sun_angle = F, #consider time (true) or over sun azimuth and zenith angle (false) for filter
+                             just_closest_time_or_sun_angle = T,#closest time/angle (true) or all times/angles in a range (false)
+                             range_time_or_sun_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
+                             
+                             just_closest_view_angle = T,#closest time/angle (true) or all times/angles in a range (false)
+                             #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
+                             range_view_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
+                             filename = NULL, #a custom name for file to save, otherwise it will be given a standard file name
+                             output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/", #where to save output of matchup (and polar plot)
+                             # bands_HYP = get_bands_station("HYPSTAR_JDS"), #bands of Hypstar station
+                             print_polar = F, # if we want to save in the output_directory a polar plot (T) or not (F)
+                             weighted_mean = F #if we want a weighted mean (T) or a simple mean (F)
+){
+  
+  #to remove specific sensor view angles
+  hyp_pivot <- hypstar_data |>     
+    tidytable::filter(!(VZA %in% delVZA)) |>
+    tidytable::filter(!(VAA %in% delVAA))
+  
+  sat_sensor <- unique(substr(sat_data$sensor,1,2))
+  
+  if(sat_sensor == "En"){
+    hypstar_resampled <- hypstar_spectral_resampling_ref_and_std(sat_sensor = "EnMAP",
+                                                                 dataset_res = hyp_pivot)
+  }
+  if(sat_sensor == "PR"){
+    hypstar_resampled <- hypstar_spectral_resampling_ref_and_std(sat_sensor = "PRISMA",
+                                                                 dataset_res = hyp_pivot)
+  }
+  if(sat_sensor == "S2"){
+    hypstar_resampled_to_S2A <- hypstar_spectral_resampling_ref_and_std(sat_sensor = "S2A",
+                                                                        dataset_res = hyp_pivot)
+    
+    hypstar_resampled_to_S2B <- hypstar_spectral_resampling_ref_and_std(sat_sensor = "S2B",
+                                                                        dataset_res = hyp_pivot)
+    
+    hypstar_resampled_to_S2C <- hypstar_spectral_resampling_ref_and_std(sat_sensor = "S2C",
+                                                                        dataset_res = hyp_pivot)
+    
+    hypstar_resampled <- hypstar_resampled_to_S2A |> tidytable::bind_rows(hypstar_resampled_to_S2B) |>
+      tidytable::bind_rows(hypstar_resampled_to_S2C)
+  }
+  if(!(sat_sensor %in% c("En","PR","S2"))){
+    print("ERRORE")
+  }
+  
+  bands_sat <- get_bands_sat(sat_sensor)
+  
+  #change col names not to confuse EnMAP B# and hypstar B#
+  sat_col_renamed <- sat_data |> tidytable::rename_with(~paste0(.,"_sat"),-c(bands,date,sensor,wvl)) 
+  
+  hypstar_col_renamed <- hypstar_resampled |> tidytable::rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor,wvl)) 
+  
+  
+  #DATE PROBLEM
+  date_output <- date_function(sat_col_renamed = sat_col_renamed,
+                               hypstar_col_renamed = hypstar_col_renamed,
+                               only_same_date = only_same_date)
+  
+  #GEOMETRY PROBLEM
+  
+  #save
+  if(!is.null(filename)){
+    save_function(view_angle_output, filename, output_directory)
+  }else{
+    save_function(view_angle_output, paste0(sat_sensor,"_matchups_from_",min(sat_data$date),"_to_",max(sat_data$date),
+                                            "_TIME-or-ANGLE-",
+                                            strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]],"_")[[1]][[1]],
+                                            "_WINDOW-",
+                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]]),
+                                                                                           error = function(e){return(NULL)})))),
+                                            strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]],"_")[[1]])]],
+                                            "_VIEW-",
+                                            strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[3]],"_")[[1]][[1]],
+                                            "_WINDOW-",
+                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(view_angle_output$operations), ":")[[1]][[3]]),
+                                                                                           error = function(e){return(NULL)})))),
+                                            "deg",
+                                            ".csv"), output_directory) 
+  }
+  
+  
+  return(view_angle_output)
+  
+}
+
+#natural_matchup ----
+natural_matchup <- function(date_output){
+  computer_relative_azimuth <- date_output |> tidytable::mutate(rel_azimuth_sat = abs(SAA_sat-VAA_sat),
+                                                                rel_azimuth_hyp = abs(SAA_hyp-VAA_hyp)) |>
+    
 }
 
 
@@ -1518,48 +1625,48 @@ save_function <- function(view_angle_output, filename, output_directory){
 plot_polar <- function(time_or_sun_angle_output,
                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                        filename = NULL){
-  # library(tidytable)
   selected_data <- time_or_sun_angle_output |> tidytable::mutate(wvl_diff = abs(wvl - 900)) |>
-    tidytable::filter(wvl_diff == min(wvl_diff)) |>
-    tidytable::select(-wvl_diff)
-  
-  exact_wvl <- unique(selected_data$wvl)
-  
-  sat_coord <- selected_data |> tidytable::select(VAA_sat, VZA_sat) |> unique()
-  
-  library(ggplot2)
-  plot <- ggplot(selected_data) +
-    geom_point(aes(x = VAA_hyp, y = VZA_hyp, color = Ref_sat-Ref_hyp),
-               size = 3) +
-    coord_radial(theta = "x", start = -pi*15/180, thetalim = c(0,330), inner.radius = 0.1,
-                 r.axis.inside = T) +
-    geom_point(data = sat_coord, aes(x = VAA_sat, y = VZA_sat),
-               color = "black",
-               size = 5,
-               shape = "cross") +
-    ylab("VZA [rad]") +
-    xlab("VAA [rad]") +
-    scale_color_gradient2('Ref_sat - Ref_hyp',      # titolo della legenda
-                          low = 'blue', mid = 'green', high = 'red',
-                          midpoint = 0)+
-    scale_x_continuous(
-      limits = c(0, 360),
-      breaks = seq(0, 330, by = 30),
-      minor_breaks = NULL
-    )+
-    ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots(time_or_sun_angle_output),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
-  
-  if(is.null(filename)){
-    filename <- paste0("polar_plot_",title)
-  }
-  
-  save_path <- paste0(output_directory, filename,".png")
-  
-  ggsave(plot = plot, filename = save_path, height = 9, width = 19)
-  
+      tidytable::filter(wvl_diff == min(wvl_diff)) |>
+      tidytable::select(-wvl_diff) 
+    
+    exact_wvl <- unique(selected_data$wvl)
+    
+    sat_coord <- selected_data |> tidytable::select(VAA_sat, VZA_sat) |> unique()
+    
+    library(ggplot2)
+    plot <- ggplot(selected_data) +
+      geom_point(aes(x = VAA_hyp, y = VZA_hyp, color = Ref_sat-Ref_hyp),
+                 size = 3) +
+      coord_radial(theta = "x", start = -pi*15/180, thetalim = c(0,330), inner.radius = 0.1,
+                   r.axis.inside = T) +
+      geom_point(data = sat_coord, aes(x = VAA_sat, y = VZA_sat),
+                 color = "black",
+                 size = 5,
+                 shape = "cross") +
+      ylab("VZA [rad]") +
+      xlab("VAA [rad]") +
+      scale_color_gradient2('Ref_sat - Ref_hyp',      # titolo della legenda
+                            low = 'blue', mid = 'green', high = 'red',
+                            midpoint = 0)+
+      scale_x_continuous(
+        limits = c(0, 360),
+        breaks = seq(0, 330, by = 30),
+        minor_breaks = NULL
+      )+
+      ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+    
+    if(is.null(filename)){
+      filename <- paste0("polar_plot_",paste0(make_title_for_polar_plots(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+    }
+    
+    save_path <- paste0(output_directory, filename,".png")
+    
+    ggsave(plot = plot, filename = save_path, height = 9, width = 19)
+
   return(plot)
 }
 
+#plot_all_view_spectra ----
 plot_all_view_spectra <- function(time_or_sun_angle_output,
                                   output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                                   title = paste0(unique(time_or_sun_angle_output$sensor),"_vs_hypstar",unique(time_or_sun_angle_output$operations)),
@@ -1567,6 +1674,7 @@ plot_all_view_spectra <- function(time_or_sun_angle_output,
   
 }
 
+#make_title_for_polar_plots ----
 make_title_for_polar_plots <- function(time_or_sun_angle_output){
   title = paste0("SAT-",unique(substr(time_or_sun_angle_output$sensor,1,2)),
                  "_HYP-",
@@ -1585,6 +1693,7 @@ make_title_for_polar_plots <- function(time_or_sun_angle_output){
   return(title)
 }
 
+#make_title_for_matchup_plots ----
 make_title_for_matchup_plots <- function(matchup_result){
   title = paste0("SAT-",unique(substr(matchup_result$sensor,1,2)),
                  "_HYP-",
@@ -1607,4 +1716,18 @@ make_title_for_matchup_plots <- function(matchup_result){
                  "deg"
                  )
   return(title)
+}
+
+#get_list_of_date_datasets ----
+get_list_of_date_datasets <- function(date_to_keep, dataset){
+  return(dataset |> tidytable::filter(date == date_to_keep))
+}
+
+#plot_divide_by_date ----
+plot_divide_by_date <- function(fns_to_plot, dataset){
+  list_of_dates = unique(dataset$date)
+  
+  list_of_date_datasets <- lapply(list_of_dates, get_list_of_date_datasets, dataset = dataset)
+  
+  lapply(list_of_date_datasets, fns_to_plot)
 }
