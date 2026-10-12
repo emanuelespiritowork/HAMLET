@@ -55,6 +55,20 @@ plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_S2)
 plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_S2)
 plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_S2)
 
+matchup_result_to_S2_v2 <- matchup_function_v2(sat_data = s2_data,
+                    hypstar_data = hypstar_data,
+                    time_or_sun_angle = T,
+                    just_closest_time_or_sun_angle = T,
+                    just_closest_view_angle = F,
+                    range_view_angle = 360,
+                    delVZA = c(0),
+                    weighted_mean = F,
+                    print_polar = T)
+
+plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_S2_v2)
+plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_S2_v2)
+plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_S2_v2)
+
 #get PRISMA data 
 
 PRISMA_data <- get_PRISMA_data(date_start = date_start,

@@ -847,37 +847,60 @@ matchup_function_v2 <- function(sat_data,
                                only_same_date = only_same_date)
   
   #GEOMETRY PROBLEM
+  geometry_output <- elemental_matchup(date_output = date_output)
   
   #save
   if(!is.null(filename)){
-    save_function(view_angle_output, filename, output_directory)
+    save_function(geometry_output, filename, output_directory)
   }else{
-    save_function(view_angle_output, paste0(sat_sensor,"_matchups_from_",min(sat_data$date),"_to_",max(sat_data$date),
-                                            "_TIME-or-ANGLE-",
-                                            strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]],"_")[[1]][[1]],
-                                            "_WINDOW-",
-                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]]),
-                                                                                           error = function(e){return(NULL)})))),
-                                            strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]],"_")[[1]])]],
-                                            "_VIEW-",
-                                            strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[3]],"_")[[1]][[1]],
-                                            "_WINDOW-",
-                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(view_angle_output$operations), ":")[[1]][[3]]),
-                                                                                           error = function(e){return(NULL)})))),
-                                            "deg",
+    save_function(geometry_output, paste0(sat_sensor,"_matchups_from_",min(sat_data$date),"_to_",max(sat_data$date),
+                                            "_elemental",
                                             ".csv"), output_directory) 
   }
   
-  
-  return(view_angle_output)
-  
+  return(geometry_output)
 }
 
-#natural_matchup ----
-natural_matchup <- function(date_output){
-  computer_relative_azimuth <- date_output |> tidytable::mutate(rel_azimuth_sat = abs(SAA_sat-VAA_sat),
+#elemental_matchup ----
+elemental_matchup <- function(date_output){
+  compute_best_config <- date_output |> tidytable::mutate(rel_azimuth_sat = abs(SAA_sat-VAA_sat),
                                                                 rel_azimuth_hyp = abs(SAA_hyp-VAA_hyp)) |>
-    
+    #using now the cosine law https://en.wikipedia.org/wiki/Law_of_cosines
+    # tidytable::mutate(rel_angle_sat = acos( (cos(a*pi/180)/cos(b*pi/180) + cos(b*pi/180)/cos(a*pi/180) - tan(a*pi/180)*sin(a*pi/180)*cos(b*pi/180) - tan(b*pi/180)*sin(b*pi/180)*cos(a*pi/180) + 2*sin(a*pi/180)*sin(b*pi/180)*cos(c*pi/180) )/2) *180/pi ) |>
+    tidytable::mutate(rel_angle_sat = acos( (cos(VZA_sat*pi/180)/cos(SZA_sat*pi/180) + cos(SZA_sat*pi/180)/cos(VZA_sat*pi/180) - tan(VZA_sat*pi/180)*sin(VZA_sat*pi/180)*cos(SZA_sat*pi/180) - tan(SZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(VZA_sat*pi/180) + 2*sin(VZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180) )/2) *180/pi ) |>
+    tidytable::mutate(rel_angle_hyp = acos( (cos(VZA_hyp*pi/180)/cos(SZA_hyp*pi/180) + cos(SZA_hyp*pi/180)/cos(VZA_hyp*pi/180) - tan(VZA_hyp*pi/180)*sin(VZA_hyp*pi/180)*cos(SZA_hyp*pi/180) - tan(SZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(VZA_hyp*pi/180) + 2*sin(VZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180) )/2) *180/pi ) |>
+    #using now the dihedral angle https://en.wikipedia.org/wiki/Dihedral_angle
+    # tidytable::mutate(plane_inclination = acos(abs(tan(a*pi/180))/sqrt(1+tan(a*pi/180)^2+((tan(a*pi/180)-tan(b*pi/180)*cos(c*pi/180))/(tan(b*pi/180)*sin(c*pi/180)))^2))*180/pi ) |>
+    tidytable::mutate(plane_inclination_sat = acos(abs(tan(VZA_sat*pi/180))/sqrt(1+tan(VZA_sat*pi/180)^2+((tan(VZA_sat*pi/180)-tan(SZA_sat*pi/180)*cos(rel_angle_sat*pi/180))/(tan(SZA_sat*pi/180)*sin(rel_angle_sat*pi/180)))^2))*180/pi ) |>
+    tidytable::mutate(plane_inclination_hyp = acos(abs(tan(VZA_hyp*pi/180))/sqrt(1+tan(VZA_hyp*pi/180)^2+((tan(VZA_hyp*pi/180)-tan(SZA_hyp*pi/180)*cos(rel_angle_hyp*pi/180))/(tan(SZA_hyp*pi/180)*sin(rel_angle_hyp*pi/180)))^2))*180/pi ) |>
+    tidytable::group_by(date, time_hyp, VZA_hyp, VAA_hyp) |>
+    tidytable::mutate(plane_inclination_diff = abs(plane_inclination_sat-plane_inclination_hyp)) |>
+    tidytable::mutate(rel_angle_diff = abs(rel_angle_sat-rel_angle_hyp)) |>
+    tidytable::ungroup() |>
+    tidytable::filter(rel_angle_diff == min(rel_angle_diff)) |>
+    tidytable::select(-rel_angle_diff,-rel_azimuth_sat,-rel_azimuth_hyp,-rel_angle_sat,-rel_angle_hyp,
+                      -plane_inclination_sat,-plane_inclination_hyp,
+                      -plane_inclination_diff) |>
+    tidytable::mutate(operations = ":elemental:elemental:elemental:elemental") 
+  
+  # tidytable::fwrite(compute_best_config,
+  #                   "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/prova_configurazione_elementale/configurazione_elementale.xlsx")
+  
+  #la divisione in rel_angle_diff e plane_inclination è motivata dalla seguente considerazione
+  #
+  #rel_angle_diff riguarda (principalmente) la microstruttura: 
+  #in base alla geometria di diffusione della singola particella, guardare con lo stesso angolo 
+  #relativo mostra lo stesso spettro di riflessione. 
+  #Non è possibile escludere del tutto la macrostruttura a causa delle riflessioni multiple nel 
+  #target
+  #
+  #plane_inclination riguarda solamente la macrostruttura:
+  #cambiare piano di inclinazione mostra (fa una radiografia) della diversa macrostruttura
+  #del target, ovvero di come le particelle si aggregano nel target. La singola particella infatti non 
+  #può distinguere il piano di inclinazione dei raggi pertanto la microstruttura cambiando 
+  #il piano di inclinazione dei raggi non può essere analizzata
+  
+  return(compute_best_config)
 }
 
 
