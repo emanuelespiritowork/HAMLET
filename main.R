@@ -13,7 +13,7 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 # date_start <- "2025-04-20"
 # date_end <- "2025-04-30"
 date_start <- "2025-04-23"
-date_end <- "2025-04-25"
+date_end <- "2025-05-08"
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" #or //10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2
 mirai::daemons(0)
 mirai::daemons(8)
@@ -57,12 +57,7 @@ plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_S2)
 
 matchup_result_to_S2_v2 <- matchup_function_v2(sat_data = s2_data,
                     hypstar_data = hypstar_data,
-                    time_or_sun_angle = T,
-                    just_closest_time_or_sun_angle = T,
-                    just_closest_view_angle = F,
-                    range_view_angle = 360,
                     delVZA = c(0),
-                    weighted_mean = F,
                     print_polar = T)
 
 plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_S2_v2)

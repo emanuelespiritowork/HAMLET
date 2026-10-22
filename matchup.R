@@ -11,11 +11,13 @@ get_hypstar_data <- function(date_start,
                              bands_HYP = get_bands_station("HYPSTAR_JDS"),
                              filename = NULL,
                              output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
-  folder_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE)) |>
-    tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
-           time = substr(folder_name, 12, 20)) |>
+  
+  full_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE))
+  
+  folder_list  <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
+                                               time = substr(folder_name, 12, 20)) |>
     tidytable::filter(date >= date_start,
-           date <= date_end)
+                      date <= date_end)
   
   hyp_function <- function(row_n, folder_list, home_path, bands_HYP){
     folder_name <- folder_list$folder_name[row_n]
@@ -110,6 +112,7 @@ get_hypstar_data <- function(date_start,
       tidytable::rename(u_rel_systematic = Ref) |>
       tidytable::mutate(u_rel_systematic = u_rel_systematic*0.01) #rescale factor
     
+    #error correlation between HYPSTAR bands
     # complete_err_corr_systematic <- data.table::data.table(date = date,
     #                                                     time = time,
     #                                                     VZA = hyp_vza,
@@ -428,6 +431,31 @@ get_sat_angles <- function(satellite, product_path, bands_statistics, bandnames)
   return(angles)
 }
 
+#get sat orbit (ascending or descending) ----
+get_sat_orbit <- function(satellite, product_path){
+  if(satellite == "S2"){
+    json_read <- jsonlite::read_json(list.files(product_path,"*.json$",full.names = T))
+    orbit_type <- json_read$properties$`sat:orbit_state`
+  }else if(satellite == "En"){
+    metadata_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
+                                pattern = "\\METADATA.XML$")
+    
+    data <- XML::xmlParse(metadata_path)
+    
+    xml_data <- XML::xmlToList(data)
+    
+    orbit_type <- tools::toTitleCase(tolower(xml_data[["specific"]][["orbitDirection"]]))
+  }else if(satellite == "PRS"){
+    # hdf <- list.files(product_path, pattern = "*.he5$", full.names = T)
+    # prova <- hdf5r::H5File$new(hdf, mode="r")
+    # list_of_attributes <- h5attributes(prova)
+    #in the list of attributes there is no "orbit type" attribute
+    orbit_type <- "Descending"
+  }
+  
+  return(orbit_type)
+}
+
 #get_statistics_dataset ----
 get_statistics_dataset <- function(satellite,
                                    product_path, 
@@ -436,7 +464,12 @@ get_statistics_dataset <- function(satellite,
                                    number_closest_pixels, 
                                    function_type){
   
-  print(product_path)
+  message(product_path)
+  
+  
+  #check if the orbit is ascending or descending for S2
+  orbit_ID <- get_sat_orbit(satellite = satellite,
+            product_path = product_path)
   
   bands_data <- get_sat_bands_list_and_names(satellite = satellite,
                                              product_path = product_path)
@@ -466,22 +499,79 @@ get_statistics_dataset <- function(satellite,
     tidytable::mutate(time = time_ID) |>
     tidytable::mutate(sensor = sensor_ID) |>
     tidytable::bind_cols(angles) |>
+    tidytable::mutate(orbit_type = orbit_ID) |>
     data.table::as.data.table()
   
   return(statistics_pivoted)
 }
 
+#get_sat_data ----
+get_sat_data <- function(product_paths,
+                         hypstar_point_path,
+                         satellite,
+                         number_closest_pixels,
+                         aggregation_type,
+                         pixel_aggregation_function,
+                         function_type,
+                         orbit_type_to_keep,
+                         scale){
+  print(product_paths)
+  
+  if(identical(product_paths,character(0))){
+    print(paste0("non ci sono acquisizioni ", satellite, " nel periodo ", date_start, " - ", date_end))
+    return(NULL)
+  }
+  
+  hypstar_point <- sf::st_read(hypstar_point_path)
+  
+  hypstar_point_buffered <- sf::st_buffer(hypstar_point, dist = 30) 
+  
+  all_datasets <- mirai::mirai_map(product_paths, function(x){return(get_statistics_dataset(satellite,x,hypstar_point_buffered,aggregation_type,number_closest_pixels,function_type))},
+                                   get_statistics_dataset = get_statistics_dataset,
+                                   pixel_aggregation_function = pixel_aggregation_function,
+                                   hypstar_point_buffered = hypstar_point_buffered,
+                                   aggregation_type = aggregation_type, 
+                                   number_closest_pixels = number_closest_pixels, 
+                                   function_type = function_type,
+                                   satellite = satellite,
+                                   get_sat_date = get_sat_date,
+                                   get_sat_time = get_sat_time,
+                                   get_sat_sensor_ID = get_sat_sensor_ID,
+                                   get_sat_bands_list_and_names =get_sat_bands_list_and_names,
+                                   get_sat_angles = get_sat_angles,
+                                   get_sat_orbit= get_sat_orbit)[]
+  
+  binded <- tidytable::bind_rows(all_datasets)|>
+    stats::na.omit() 
+  
+  #check orbit type
+  binded <- binded |>
+    tidytable::filter(orbit_type %in% orbit_type_to_keep)
+  
+  #rescale dataset
+  if(!is.na(scale)){
+    binded <- binded |> 
+      tidytable::mutate(Ref = Ref/scale) |>
+      tidytable::mutate(sd = sd/scale)
+  }
+  
+  #add wavelengths to the dataset
+  with_wvl <- add_wvl(binded) |>
+    stats::na.omit() 
+  
+  return(with_wvl)
+}
+
 #get_s2_data ----
 get_s2_data <- function(date_start, 
                         date_end,
-                        hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                         repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/", #masked S2 data
-                        filename = NULL,
                         number_closest_pixels = 36,
-                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
-                        scale = F,
+                        scale = NA, #the number to divide to
                         aggregation_type = "mean", # this can be 1,2,3 depending on: 
-                        function_type = "exact"){
+                        function_type = "exact",
+                        orbit_type_to_keep = c("descending"),
+                        hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp"){
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
   years <- as.character(year_start:year_end)
@@ -496,45 +586,15 @@ get_s2_data <- function(date_start,
   
   product_paths <- unlist(lapply(repo_year_path, get_products_paths))
   
-  print(product_paths)
+  sat_data <- get_sat_data(product_paths = product_paths,
+                           satellite = "S2",
+                           number_closest_pixels = number_closest_pixels,
+                           aggregation_type = aggregation_type,
+                           pixel_aggregation_function = pixel_aggregation_function,
+                           function_type = function_type,
+                           hypstar_point_path = hypstar_point_path)
   
-  hypstar_point <- sf::st_read(hypstar_point_path)
-  
-  hypstar_point_buffered <- sf::st_buffer(hypstar_point, dist = 30) 
-  
-  all_datasets <- mirai::mirai_map(product_paths, function(x){return(get_statistics_dataset(satellite,x,hypstar_point_buffered,aggregation_type,number_closest_pixels,function_type))},
-                                   get_statistics_dataset = get_statistics_dataset,
-                                   pixel_aggregation_function = pixel_aggregation_function,
-                                   hypstar_point_buffered = hypstar_point_buffered,
-                                   aggregation_type = aggregation_type, 
-                                   number_closest_pixels = number_closest_pixels, 
-                                   function_type = function_type,
-                                   satellite = "S2",
-                                   get_sat_date = get_sat_date,
-                                   get_sat_time = get_sat_time,
-                                   get_sat_sensor_ID = get_sat_sensor_ID,
-                                   get_sat_bands_list_and_names =get_sat_bands_list_and_names,
-                                   get_sat_angles = get_sat_angles)[]
-  
-  binded <- dplyr::bind_rows(all_datasets)|>
-    stats::na.omit() 
-  
-  if(scale){
-    binded <- binded |> 
-      tidytable::mutate(Ref = Ref/10000) |>
-      tidytable::mutate(sd = sd/10000)
-  }
-  
-  with_wvl <- add_wvl(binded) |>
-    stats::na.omit() 
-  
-  if(!is.null(filename)){
-    save_function(with_wvl, filename, output_directory)
-  }else{
-    save_function(with_wvl, paste0("S2_data_from_",date_start,"_to_",date_end, ".csv"), output_directory)
-  }
-  
-  return(with_wvl)
+  return(sat_data)
 }
 
 
@@ -543,16 +603,15 @@ get_PRISMA_data <- function(date_start,
                             date_end,
                             hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                             repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1", # o //10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2
-                            filename = NULL,
-                            output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
                             number_closest_pixels = 4,
-                            scale = F,
+                            scale = NA, #the number to divide to
                             aggregation_type = "mean", 
-                            function_type = "exact"){
-  year_start <- lubridate::year(as.Date(date_start))
-  year_end <- lubridate::year(as.Date(date_end))
-  years <- as.character(year_start:year_end)
-  repo_year_path <- paste0(repo_root_path, years, "/", PRISMA_level_product, "/")
+                            function_type = "exact",
+                            orbit_type_to_keep = c("descending")){
+  # year_start <- lubridate::year(as.Date(date_start))
+  # year_end <- lubridate::year(as.Date(date_end))
+  # years <- as.character(year_start:year_end)
+  # repo_year_path <- paste0(repo_root_path, years, "/", PRISMA_level_product, "/")
   
   #now you enter in the folder where there are products
   #TEMPORARY
@@ -560,44 +619,14 @@ get_PRISMA_data <- function(date_start,
   list_of_dates <- lapply(list_of_products,function(x){return(as.Date(substring(strsplit(basename(x), split = "_")[[1]][[5]],"1","8"), format = "%Y%m%d"))})
   product_paths <- unlist(list_of_products[list_of_dates > as.Date(date_start) & list_of_dates < as.Date(date_end)])
   
-  hypstar_point <- sf::st_read(hypstar_point_path)
-  
-  hypstar_point_buffered <- sf::st_buffer(hypstar_point, dist = 30) 
-  
-  all_datasets <- mirai::mirai_map(product_paths, function(x){return(get_statistics_dataset(satellite,x,hypstar_point_buffered,aggregation_type,number_closest_pixels,function_type))},
-                                   get_statistics_dataset = get_statistics_dataset,
-                                   pixel_aggregation_function = pixel_aggregation_function,
-                                   hypstar_point_buffered = hypstar_point_buffered,
-                                   aggregation_type = aggregation_type, 
-                                   number_closest_pixels = number_closest_pixels, 
-                                   function_type = function_type,
-                                   satellite = "PRS",
-                                   get_sat_date = get_sat_date,
-                                   get_sat_time = get_sat_time,
-                                   get_sat_sensor_ID = get_sat_sensor_ID,
-                                   get_sat_bands_list_and_names =get_sat_bands_list_and_names,
-                                   get_sat_angles = get_sat_angles)[]
-  
-  binded <- dplyr::bind_rows(all_datasets)|>
-    stats::na.omit()
-  
-  if(scale){
-    binded <- binded |> 
-      tidytable::mutate(Ref = Ref/10000) |>
-      tidytable::mutate(sd = sd/10000)
-  }
-  
-  with_wvl <- add_wvl(binded) |>
-    stats::na.omit() 
-  
-  if(is.null(filename)){
-    save_function(with_wvl, paste0(paste0(basename(product_paths), collapse = "_and_"), ".csv"), output_directory)
-  }else{
-    save_function(with_wvl, filename, output_directory)
-  }
-  
-  return(with_wvl)
-  
+  sat_data <- get_sat_data(product_paths = product_paths,
+                           satellite = "PRS",
+                           number_closest_pixels = number_closest_pixels,
+                           aggregation_type = aggregation_type,
+                           pixel_aggregation_function = pixel_aggregation_function,
+                           function_type = function_type,
+                           hypstar_point_path = hypstar_point_path)
+  return(sat_data)
 }
 
 #get_EnMAP_data ----
@@ -607,11 +636,10 @@ get_EnMAP_data <- function(date_start,
                            hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp", #hypstar shapefile path
                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #the main folder of EnMAP data
                            number_closest_pixels = 4,
-                           filename = NULL, #if not NULL the enmap data will be saved with this filename
-                           output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/", #output directory if filename is not null
-                           scale = F,
+                           scale = NA,
                            aggregation_type = "mean", 
-                           function_type = "exact"){
+                           function_type = "exact",
+                           orbit_type_to_keep = c("descending")){
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
   years <- as.character(year_start:year_end)
@@ -626,42 +654,15 @@ get_EnMAP_data <- function(date_start,
   
   product_paths <- unlist(lapply(repo_year_path, get_products_paths))
   
-  hypstar_point <- sf::st_read(hypstar_point_path)
+  sat_data <- get_sat_data(product_paths = product_paths,
+                           satellite = "En",
+                           number_closest_pixels = number_closest_pixels,
+                           aggregation_type = aggregation_type,
+                           pixel_aggregation_function = pixel_aggregation_function,
+                           function_type = function_type,
+                           hypstar_point_path = hypstar_point_path)
   
-  hypstar_point_buffered <- sf::st_buffer(hypstar_point, dist = 30) 
-  
-  all_datasets <- mirai::mirai_map(product_paths, function(x){return(get_statistics_dataset(satellite,x,hypstar_point_buffered,aggregation_type,number_closest_pixels,function_type))},
-                                   get_statistics_dataset = get_statistics_dataset,
-                                   pixel_aggregation_function = pixel_aggregation_function,
-                                   hypstar_point_buffered = hypstar_point_buffered,
-                                   aggregation_type = aggregation_type, 
-                                   number_closest_pixels = number_closest_pixels, 
-                                   function_type = function_type,
-                                   satellite = "En",
-                                   get_sat_date = get_sat_date,
-                                   get_sat_time = get_sat_time,
-                                   get_sat_sensor_ID = get_sat_sensor_ID,
-                                   get_sat_bands_list_and_names =get_sat_bands_list_and_names,
-                                   get_sat_angles = get_sat_angles)[]
-  
-  binded <- dplyr::bind_rows(all_datasets)
-  
-  if(scale){
-    binded <- binded |> 
-      tidytable::mutate(Ref = Ref/10000) |>
-      tidytable::mutate(sd = sd/10000)
-  }
-  
-  with_wvl <- add_wvl(binded) |>
-    stats::na.omit() 
-  
-  if(!is.null(filename)){
-    save_function(with_wvl, filename, output_directory)
-  }else{
-    save_function(with_wvl, paste0(paste0(basename(product_paths), collapse = "_and_"), ".csv"), output_directory)
-  }
-  
-  return(with_wvl)
+  return(sat_data)
 }
 
 #matchup_function ----
@@ -787,18 +788,9 @@ matchup_function_v2 <- function(sat_data,
                              
                              only_same_date = T,#only same date comparison accepted (true) or closest date (false)
                              
-                             time_or_sun_angle = F, #consider time (true) or over sun azimuth and zenith angle (false) for filter
-                             just_closest_time_or_sun_angle = T,#closest time/angle (true) or all times/angles in a range (false)
-                             range_time_or_sun_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
-                             
-                             just_closest_view_angle = T,#closest time/angle (true) or all times/angles in a range (false)
-                             #weighted_mean = F,#to execute a mean (T) or a weighted mean (F) relative to the time/angle difference
-                             range_view_angle = NULL,#if just_closest = F, here we need a range of hours/angles. -range/2,x,+range/2
                              filename = NULL, #a custom name for file to save, otherwise it will be given a standard file name
                              output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/", #where to save output of matchup (and polar plot)
-                             # bands_HYP = get_bands_station("HYPSTAR_JDS"), #bands of Hypstar station
-                             print_polar = F, # if we want to save in the output_directory a polar plot (T) or not (F)
-                             weighted_mean = F #if we want a weighted mean (T) or a simple mean (F)
+                             print_polar = F # if we want to save in the output_directory a polar plot (T) or not (F)
 ){
   
   #to remove specific sensor view angles
@@ -840,11 +832,15 @@ matchup_function_v2 <- function(sat_data,
   
   hypstar_col_renamed <- hypstar_resampled |> tidytable::rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor,wvl)) 
   
-  
   #DATE PROBLEM
   date_output <- date_function(sat_col_renamed = sat_col_renamed,
                                hypstar_col_renamed = hypstar_col_renamed,
                                only_same_date = only_same_date)
+  
+  #POLAR PLOT
+  # if(print_polar){
+  #   plot_divide_by_date(plot_polar, dataset = date_output)
+  # }
   
   #GEOMETRY PROBLEM
   geometry_output <- elemental_matchup(date_output = date_output)
@@ -863,28 +859,33 @@ matchup_function_v2 <- function(sat_data,
 
 #elemental_matchup ----
 elemental_matchup <- function(date_output){
-  compute_best_config <- date_output |> tidytable::mutate(rel_azimuth_sat = abs(SAA_sat-VAA_sat),
-                                                                rel_azimuth_hyp = abs(SAA_hyp-VAA_hyp)) |>
+  compute_best_config <- date_output |> 
+    tidytable::mutate(rel_azimuth_sat = abs(SAA_sat-VAA_sat),
+                                                          rel_azimuth_hyp = abs(SAA_hyp-VAA_hyp)) |>
     #using now the cosine law https://en.wikipedia.org/wiki/Law_of_cosines
-    # tidytable::mutate(rel_angle_sat = acos( (cos(a*pi/180)/cos(b*pi/180) + cos(b*pi/180)/cos(a*pi/180) - tan(a*pi/180)*sin(a*pi/180)*cos(b*pi/180) - tan(b*pi/180)*sin(b*pi/180)*cos(a*pi/180) + 2*sin(a*pi/180)*sin(b*pi/180)*cos(c*pi/180) )/2) *180/pi ) |>
+    # rel_angle_sat = acos( (cos(a*pi/180)/cos(b*pi/180) + cos(b*pi/180)/cos(a*pi/180) - tan(a*pi/180)*sin(a*pi/180)*cos(b*pi/180) - tan(b*pi/180)*sin(b*pi/180)*cos(a*pi/180) + 2*sin(a*pi/180)*sin(b*pi/180)*cos(c*pi/180) )/2) *180/pi
     tidytable::mutate(rel_angle_sat = acos( (cos(VZA_sat*pi/180)/cos(SZA_sat*pi/180) + cos(SZA_sat*pi/180)/cos(VZA_sat*pi/180) - tan(VZA_sat*pi/180)*sin(VZA_sat*pi/180)*cos(SZA_sat*pi/180) - tan(SZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(VZA_sat*pi/180) + 2*sin(VZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180) )/2) *180/pi ) |>
     tidytable::mutate(rel_angle_hyp = acos( (cos(VZA_hyp*pi/180)/cos(SZA_hyp*pi/180) + cos(SZA_hyp*pi/180)/cos(VZA_hyp*pi/180) - tan(VZA_hyp*pi/180)*sin(VZA_hyp*pi/180)*cos(SZA_hyp*pi/180) - tan(SZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(VZA_hyp*pi/180) + 2*sin(VZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180) )/2) *180/pi ) |>
     #using now the dihedral angle https://en.wikipedia.org/wiki/Dihedral_angle
-    # tidytable::mutate(plane_inclination = acos(abs(tan(a*pi/180))/sqrt(1+tan(a*pi/180)^2+((tan(a*pi/180)-tan(b*pi/180)*cos(c*pi/180))/(tan(b*pi/180)*sin(c*pi/180)))^2))*180/pi ) |>
+    # plane_inclination = acos(abs(tan(a*pi/180))/sqrt(1+tan(a*pi/180)^2+((tan(a*pi/180)-tan(b*pi/180)*cos(c*pi/180))/(tan(b*pi/180)*sin(c*pi/180)))^2))*180/pi
     tidytable::mutate(plane_inclination_sat = acos(abs(tan(VZA_sat*pi/180))/sqrt(1+tan(VZA_sat*pi/180)^2+((tan(VZA_sat*pi/180)-tan(SZA_sat*pi/180)*cos(rel_angle_sat*pi/180))/(tan(SZA_sat*pi/180)*sin(rel_angle_sat*pi/180)))^2))*180/pi ) |>
     tidytable::mutate(plane_inclination_hyp = acos(abs(tan(VZA_hyp*pi/180))/sqrt(1+tan(VZA_hyp*pi/180)^2+((tan(VZA_hyp*pi/180)-tan(SZA_hyp*pi/180)*cos(rel_angle_hyp*pi/180))/(tan(SZA_hyp*pi/180)*sin(rel_angle_hyp*pi/180)))^2))*180/pi ) |>
-    tidytable::group_by(date, time_hyp, VZA_hyp, VAA_hyp) |>
     tidytable::mutate(plane_inclination_diff = abs(plane_inclination_sat-plane_inclination_hyp)) |>
     tidytable::mutate(rel_angle_diff = abs(rel_angle_sat-rel_angle_hyp)) |>
-    tidytable::ungroup() |>
-    tidytable::filter(rel_angle_diff == min(rel_angle_diff)) |>
-    tidytable::select(-rel_angle_diff,-rel_azimuth_sat,-rel_azimuth_hyp,-rel_angle_sat,-rel_angle_hyp,
-                      -plane_inclination_sat,-plane_inclination_hyp,
-                      -plane_inclination_diff) |>
-    tidytable::mutate(operations = ":elemental:elemental:elemental:elemental") 
+    tidytable::group_by(time_hyp, VZA_hyp, VAA_hyp) |>
+    tidytable::mutate(rel_angle_diff = mean(rel_angle_diff)) |>
+    tidytable::mutate(plane_inclination_diff = mean(plane_inclination_diff)) |>
+    tidytable::ungroup()
   
-  # tidytable::fwrite(compute_best_config,
-  #                   "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/prova_configurazione_elementale/configurazione_elementale.xlsx")
+  filter_best_config <- compute_best_config |>
+    tidytable::group_by(date) |>
+    tidytable::filter(rel_angle_diff == min(rel_angle_diff)) |>
+    tidytable::ungroup() |>
+    tidytable::select(-any_of(c("rel_angle_diff","rel_azimuth_sat","rel_azimuth_hyp",
+                                "rel_angle_sat","rel_angle_hyp",
+                      "plane_inclination_sat","plane_inclination_hyp",
+                      "plane_inclination_diff"))) |>
+    tidytable::mutate(operations = ":elemental:elemental:elemental:elemental") 
   
   #la divisione in rel_angle_diff e plane_inclination è motivata dalla seguente considerazione
   #
@@ -900,7 +901,7 @@ elemental_matchup <- function(date_output){
   #può distinguere il piano di inclinazione dei raggi pertanto la microstruttura cambiando 
   #il piano di inclinazione dei raggi non può essere analizzata
   
-  return(compute_best_config)
+  return(filter_best_config)
 }
 
 
