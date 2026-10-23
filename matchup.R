@@ -406,6 +406,11 @@ get_sat_angles <- function(satellite, product_path, bands_statistics, bandnames)
                         VZA = sensor_zenith,
                         VAA = sensor_azimuth) |>
       tidytable::select(VAA,VZA,SZA,SAA)
+    
+    # hdf <- list.files(product_path, pattern = "*.he5$", full.names = T)
+    # prova <- hdf5r::H5File$new(hdf, mode="r")
+    # list_of_attributes <- hdf5r::h5attributes(prova)
+    #in the list of attributes there is no "orbit type" attribute
   }
   if(satellite == "En"){
     metadata_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
@@ -895,12 +900,14 @@ elemental_matchup <- function(date_output){
                                                           rel_azimuth_hyp = abs(SAA_hyp-VAA_hyp)) |>
     #using now the cosine law https://en.wikipedia.org/wiki/Law_of_cosines
     # rel_angle_sat = acos( (cos(a*pi/180)/cos(b*pi/180) + cos(b*pi/180)/cos(a*pi/180) - tan(a*pi/180)*sin(a*pi/180)*cos(b*pi/180) - tan(b*pi/180)*sin(b*pi/180)*cos(a*pi/180) + 2*sin(a*pi/180)*sin(b*pi/180)*cos(c*pi/180) )/2) *180/pi
-    tidytable::mutate(rel_angle_sat = acos( (cos(VZA_sat*pi/180)/cos(SZA_sat*pi/180) + cos(SZA_sat*pi/180)/cos(VZA_sat*pi/180) - tan(VZA_sat*pi/180)*sin(VZA_sat*pi/180)*cos(SZA_sat*pi/180) - tan(SZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(VZA_sat*pi/180) + 2*sin(VZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180) )/2) *180/pi ) |>
-    tidytable::mutate(rel_angle_hyp = acos( (cos(VZA_hyp*pi/180)/cos(SZA_hyp*pi/180) + cos(SZA_hyp*pi/180)/cos(VZA_hyp*pi/180) - tan(VZA_hyp*pi/180)*sin(VZA_hyp*pi/180)*cos(SZA_hyp*pi/180) - tan(SZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(VZA_hyp*pi/180) + 2*sin(VZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180) )/2) *180/pi ) |>
+    # tidytable::mutate(rel_angle_sat_v2 = acos( (cos(VZA_sat*pi/180)/cos(SZA_sat*pi/180) + cos(SZA_sat*pi/180)/cos(VZA_sat*pi/180) - tan(VZA_sat*pi/180)*sin(VZA_sat*pi/180)*cos(SZA_sat*pi/180) - tan(SZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(VZA_sat*pi/180) + 2*sin(VZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180) )/2) *180/pi ) |>
+    # tidytable::mutate(rel_angle_hyp_v2 = acos( (cos(VZA_hyp*pi/180)/cos(SZA_hyp*pi/180) + cos(SZA_hyp*pi/180)/cos(VZA_hyp*pi/180) - tan(VZA_hyp*pi/180)*sin(VZA_hyp*pi/180)*cos(SZA_hyp*pi/180) - tan(SZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(VZA_hyp*pi/180) + 2*sin(VZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180) )/2) *180/pi ) |>
+    tidytable::mutate(rel_angle_sat = acos( cos(VZA_sat*pi/180) * cos(SZA_sat*pi/180) + sin(VZA_sat*pi/180) * sin(SZA_sat*pi/180) * cos(rel_azimuth_sat*pi/180) )*180/pi ) |>
+    tidytable::mutate(rel_angle_hyp = acos( cos(VZA_hyp*pi/180) * cos(SZA_hyp*pi/180) + sin(VZA_hyp*pi/180) * sin(SZA_hyp*pi/180) * cos(rel_azimuth_hyp*pi/180) )*180/pi ) |>
     #using now the dihedral angle https://en.wikipedia.org/wiki/Dihedral_angle
     # plane_inclination = acos(abs(tan(a*pi/180))/sqrt(1+tan(a*pi/180)^2+((tan(a*pi/180)-tan(b*pi/180)*cos(c*pi/180))/(tan(b*pi/180)*sin(c*pi/180)))^2))*180/pi
-    tidytable::mutate(plane_inclination_sat = acos(abs(tan(VZA_sat*pi/180))/sqrt(1+tan(VZA_sat*pi/180)^2+((tan(VZA_sat*pi/180)-tan(SZA_sat*pi/180)*cos(rel_angle_sat*pi/180))/(tan(SZA_sat*pi/180)*sin(rel_angle_sat*pi/180)))^2))*180/pi ) |>
-    tidytable::mutate(plane_inclination_hyp = acos(abs(tan(VZA_hyp*pi/180))/sqrt(1+tan(VZA_hyp*pi/180)^2+((tan(VZA_hyp*pi/180)-tan(SZA_hyp*pi/180)*cos(rel_angle_hyp*pi/180))/(tan(SZA_hyp*pi/180)*sin(rel_angle_hyp*pi/180)))^2))*180/pi ) |>
+    tidytable::mutate(plane_inclination_sat = acos(abs(tan(VZA_sat*pi/180))/sqrt(1+tan(VZA_sat*pi/180)^2+((tan(VZA_sat*pi/180)-tan(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180))/(tan(SZA_sat*pi/180)*sin(rel_azimuth_sat*pi/180)))^2))*180/pi ) |>
+    tidytable::mutate(plane_inclination_hyp = acos(abs(tan(VZA_hyp*pi/180))/sqrt(1+tan(VZA_hyp*pi/180)^2+((tan(VZA_hyp*pi/180)-tan(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180))/(tan(SZA_hyp*pi/180)*sin(rel_azimuth_hyp*pi/180)))^2))*180/pi ) |>
     tidytable::mutate(plane_inclination_diff = abs(plane_inclination_sat-plane_inclination_hyp)) |>
     tidytable::mutate(rel_angle_diff = abs(rel_angle_sat-rel_angle_hyp)) |>
     tidytable::group_by(time_hyp, VZA_hyp, VAA_hyp) |>
