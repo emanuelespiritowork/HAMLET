@@ -13,8 +13,10 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 # date_start <- "2025-04-20"
 # date_end <- "2025-04-30"
 date_start <- "2025-04-23"
-date_end <- "2025-06-08"
-repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" #or //10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2
+date_end <- "2025-04-25"
+repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" 
+#or 
+# repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2"
 mirai::daemons(0)
 mirai::daemons(8)
 
@@ -51,18 +53,18 @@ matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
                  weighted_mean = F,
                  print_polar = T)
 
-plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_S2)
-plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_S2)
-plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_S2)
+plot <- plot_ribbon(matchup_result_to_S2)
+plot <- plot_rainbow(matchup_result_to_S2)
+plot <- plot_relative_errors(matchup_result_to_S2)
 
 matchup_result_to_S2_v2 <- matchup_function_v2(sat_data = s2_data,
                     hypstar_data = hypstar_data,
                     delVZA = c(0),
                     print_polar = T)
 
-plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_S2_v2)
-plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_S2_v2)
-plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_S2_v2)
+plot <- plot_ribbon(matchup_result_to_S2_v2[[1]])
+plot <- plot_rainbow(matchup_result_to_S2_v2[[1]])
+plot <- plot_relative_errors(matchup_result_to_S2_v2[[1]])
 
 #get PRISMA data 
 
@@ -81,9 +83,9 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              weighted_mean = F,
                                              print_polar = T)
 
-plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_PRISMA)
-plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_PRISMA)
-plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_PRISMA)
+plot <- plot_ribbon(matchup_result_to_PRISMA)
+plot <- plot_rainbow(matchup_result_to_PRISMA)
+plot <- plot_relative_errors(matchup_result_to_PRISMA)
 
 matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              hypstar_data = hypstar_data,
@@ -96,9 +98,9 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              weighted_mean = F,
                                              print_polar = T)
 
-plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_PRISMA)
-plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_PRISMA)
-plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_PRISMA)
+plot <- plot_ribbon(matchup_result_to_PRISMA)
+plot <- plot_rainbow(matchup_result_to_PRISMA)
+plot <- plot_relative_errors(matchup_result_to_PRISMA)
 
 matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              hypstar_data = hypstar_data,
@@ -110,12 +112,11 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                                      delVZA = c(0),
                                              weighted_mean = F,
                                              print_polar = T)
-plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_PRISMA)
-plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_PRISMA)
-plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_PRISMA)
+plot <- plot_ribbon(matchup_result_to_PRISMA)
+plot <- plot_rainbow(matchup_result_to_PRISMA)
+plot <- plot_relative_errors(matchup_result_to_PRISMA)
 
 #get EnMAP data
-
 EnMAP_data <- get_EnMAP_data(date_start = date_start,
                              date_end = date_end)
 
@@ -130,9 +131,9 @@ matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                                      delVZA = c(0),
                                             print_polar = T)
 
-plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_EnMAP)
-plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_EnMAP)
-plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_EnMAP)
+plot <- plot_ribbon(matchup_result_to_EnMAP)
+plot <- plot_rainbow(matchup_result_to_EnMAP)
+plot <- plot_relative_errors(matchup_result_to_EnMAP)
 
 matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                             hypstar_data = hypstar_data,
@@ -143,9 +144,9 @@ matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                                      range_view_angle = 30,
                                                      delVZA = c(0))
 
-plot <- plot_divide_by_date(plot_ribbon, matchup_result_to_EnMAP)
-plot <- plot_divide_by_date(plot_rainbow,matchup_result_to_EnMAP)
-plot <- plot_divide_by_date(plot_relative_errors,matchup_result_to_EnMAP)
+plot <- plot_ribbon(matchup_result_to_EnMAP)
+plot <- plot_rainbow(matchup_result_to_EnMAP)
+plot <- plot_relative_errors(matchup_result_to_EnMAP)
 
 # ############################
 # write.table(matchup_result_to_PRISMA,"//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/matchupPRISMA_1hour_range.csv",

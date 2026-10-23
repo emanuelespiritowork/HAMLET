@@ -12,6 +12,8 @@ get_hypstar_data <- function(date_start,
                              filename = NULL,
                              output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
   
+  print(paste0("Retrieving HYPSTAR data from ", date_start, " to ", date_end))
+  
   full_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE))
   
   folder_list  <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
@@ -544,20 +546,27 @@ get_sat_data <- function(product_paths,
   binded <- tidytable::bind_rows(all_datasets)|>
     stats::na.omit() 
   
-  #check orbit type
-  binded <- binded |>
-    tidytable::filter(orbit_type %in% orbit_type_to_keep)
-  
-  #rescale dataset
-  if(!is.na(scale)){
-    binded <- binded |> 
-      tidytable::mutate(Ref = Ref/scale) |>
-      tidytable::mutate(sd = sd/scale)
+  if(nrow(binded) != 0){
+    
+    #check orbit type
+    binded <- binded |>
+      tidytable::filter(orbit_type %in% orbit_type_to_keep)
+    
+    #rescale dataset
+    if(!is.na(scale)){
+      binded <- binded |> 
+        tidytable::mutate(Ref = Ref/scale) |>
+        tidytable::mutate(sd = sd/scale)
+    }
+    
+    #add wavelengths to the dataset
+    with_wvl <- add_wvl(binded) |>
+      stats::na.omit()
+  }else{
+    print(paste0("le acquisizioni ", satellite, " nel periodo ", date_start, " - ", date_end, " sono mascherate"))
+    return(NULL)
   }
-  
-  #add wavelengths to the dataset
-  with_wvl <- add_wvl(binded) |>
-    stats::na.omit() 
+   
   
   return(with_wvl)
 }
@@ -627,7 +636,9 @@ get_PRISMA_data <- function(date_start,
                            aggregation_type = aggregation_type,
                            pixel_aggregation_function = pixel_aggregation_function,
                            function_type = function_type,
-                           hypstar_point_path = hypstar_point_path)
+                           hypstar_point_path = hypstar_point_path,
+                           orbit_type_to_keep = orbit_type_to_keep,
+                           scale = scale)
   return(sat_data)
 }
 
@@ -662,7 +673,9 @@ get_EnMAP_data <- function(date_start,
                            aggregation_type = aggregation_type,
                            pixel_aggregation_function = pixel_aggregation_function,
                            function_type = function_type,
-                           hypstar_point_path = hypstar_point_path)
+                           hypstar_point_path = hypstar_point_path,
+                           orbit_type_to_keep = orbit_type_to_keep,
+                           scale = scale)
   
   return(sat_data)
 }
@@ -858,8 +871,9 @@ matchup_function_v2 <- function(sat_data,
                tidytable::filter(r == group))
     }
     list_of_datasets_per_time <- lapply(groups, divide_by_time, df = order_time_and_date)
-    lapply(list_of_datasets_per_time, plot_polar_for_elemental, geometry_output = geometry_output)
-    # plot_divide_by_date(plot_polar, dataset = date_output)
+    list_of_polar_plots <- lapply(list_of_datasets_per_time, plot_polar_for_elemental, geometry_output = geometry_output)
+  }else{
+    list_of_polar_plots = NULL
   }
   
   #save
@@ -871,7 +885,7 @@ matchup_function_v2 <- function(sat_data,
                                             ".csv"), output_directory) 
   }
   
-  return(geometry_output)
+  return(list(geometry_output,list_of_polar_plots))
 }
 
 #elemental_matchup ----
@@ -1759,7 +1773,7 @@ plot_polar_for_elemental <- function(time_or_sun_angle_output,
       breaks = seq(0, 330, by = 30),
       minor_breaks = NULL
     )+
-    ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+    ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots_elemental(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
   
   if(elem_time == unique(selected_data$time_hyp)){
     plot <- plot + 
@@ -1774,7 +1788,7 @@ plot_polar_for_elemental <- function(time_or_sun_angle_output,
   }
   
   if(is.null(filename)){
-    filename <- paste0("polar_plot_",make_title_for_polar_plots(selected_data),"_hyptime_",gsub(":","",now),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0))
+    filename <- paste0("polar_plot_",make_title_for_polar_plots_elemental(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0))
   }
   
   save_path <- paste0(output_directory, filename,".png")
@@ -1811,28 +1825,63 @@ make_title_for_polar_plots <- function(time_or_sun_angle_output){
   return(title)
 }
 
+#make_title_for_polar_plots_elemental ----
+make_title_for_polar_plots_elemental <- function(time_or_sun_angle_output){
+  title = paste0("SAT-",unique(substr(time_or_sun_angle_output$sensor,1,2)),
+                 "_HYP-",
+                 unique(substr(time_or_sun_angle_output$hyp_sensor,1,4)),
+                 "_DT-", 
+                 gsub("-","",unique(time_or_sun_angle_output$date)),
+                 "T",
+                 gsub(":","",unique(time_or_sun_angle_output$time_sat)),
+                 "_HYPTIME_",
+                 gsub(":","",unique(time_or_sun_angle_output$time_hyp))
+  )
+  return(title)
+}
+
 #make_title_for_matchup_plots ----
 make_title_for_matchup_plots <- function(matchup_result){
-  title = paste0("SAT-",unique(substr(matchup_result$sensor,1,2)),
-                 "_HYP-",
-                 unique(substr(matchup_result$hyp_sensor,1,4)),
-                 "_DT-", 
-                 gsub("-","",unique(matchup_result$date)),
-                 "T",
-                 gsub(":","",unique(matchup_result$time_sat)),
-                 "_TIME-or-ANGLE-",
-                 strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[1]],
-                 "_WINDOW-",
-                 invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[2]]),
-                          error = function(e){return(NULL)})))),
-                 strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]])]],
-                 "_VIEW-",
-                 strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[3]],"_")[[1]][[1]],
-                 "_WINDOW-",
-                 invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[3]]),
-                                     error = function(e){return(NULL)})))),
-                 "deg"
-                 )
+  
+  if(strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[1]] == "elemental"){
+    title = paste0("SAT-",unique(substr(matchup_result$sensor,1,2)),
+                   "_HYP-",
+                   unique(substr(matchup_result$hyp_sensor,1,4)),
+                   "_DT-", 
+                   gsub("-","",unique(matchup_result$date)),
+                   "T",
+                   gsub(":","",unique(matchup_result$time_sat)),
+                   "_HYPTIME_",
+                   gsub(":","",unique(matchup_result$time_hyp)),
+                   "_HYPVZA_",
+                   gsub(":","",unique(matchup_result$VZA_hyp)),
+                   "_HYPVAA_",
+                   gsub(":","",unique(matchup_result$VAA_hyp))
+    )
+  }else{
+    title = paste0("SAT-",unique(substr(matchup_result$sensor,1,2)),
+                   "_HYP-",
+                   unique(substr(matchup_result$hyp_sensor,1,4)),
+                   "_DT-", 
+                   gsub("-","",unique(matchup_result$date)),
+                   "T",
+                   gsub(":","",unique(matchup_result$time_sat)),
+                   "_TIME-or-ANGLE-",
+                   strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[1]],
+                   "_WINDOW-",
+                   invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[2]]),
+                                                                  error = function(e){return(NULL)})))),
+                   strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]])]],
+                   "_VIEW-",
+                   strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[3]],"_")[[1]][[1]],
+                   "_WINDOW-",
+                   invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[3]]),
+                                                                  error = function(e){return(NULL)})))),
+                   "deg"
+    )
+  }
+  
+  
   return(title)
 }
 
@@ -1848,4 +1897,161 @@ plot_divide_by_date <- function(fns_to_plot, dataset){
   list_of_date_datasets <- lapply(list_of_dates, get_list_of_date_datasets, dataset = dataset)
   
   lapply(list_of_date_datasets, fns_to_plot)
+}
+
+#create_summary ----
+create_summary <- function(date_start,
+                           date_end,
+                           repo_root_path_prs,
+                           output_summary_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/summary/",
+                           filename = NULL){
+  #get hypstar data
+  hypstar_data <- get_hypstar_data(date_start = date_start, 
+                                   date_end = date_end)
+  
+  #get s2 data 
+  s2_data <- get_s2_data(date_start = date_start,
+                         date_end = date_end)
+  
+  if(!is.null(s2_data) & !is.null(hypstar_data)){
+    matchup_result_to_S2_v2 <- matchup_function_v2(sat_data = s2_data,
+                                                   hypstar_data = hypstar_data,
+                                                   delVZA = c(0),
+                                                   print_polar = T)
+  
+    s2_ribbon_plots <- plot_ribbon(matchup_result_to_S2_v2[[1]])
+    s2_rainbow_plots <- plot_rainbow(matchup_result_to_S2_v2[[1]])
+    s2_errors_plots <- plot_relative_errors(matchup_result_to_S2_v2[[1]])
+    s2_polar_plots <- matchup_result_to_S2_v2[[2]]
+  }else{
+    s2_ribbon_plots <- NULL
+    s2_rainbow_plots <- NULL
+    s2_errors_plots <- NULL
+    s2_polar_plots <- NULL
+  }
+  
+  #get PRS data
+  PRISMA_data <- get_PRISMA_data(date_start = date_start,
+                                 date_end = date_end,
+                                 repo_root_path = repo_root_path_prs)
+  
+  if(!is.null(PRISMA_data)  & !is.null(hypstar_data)){
+    matchup_result_to_PRISMA_v2 <- matchup_function_v2(sat_data = PRISMA_data,
+                                                       hypstar_data = hypstar_data,
+                                                       delVZA = c(0),
+                                                       print_polar = T)
+    
+    PRISMA_ribbon_plots <- plot_ribbon(matchup_result_to_PRISMA_v2[[1]])
+    PRISMA_rainbow_plots <- plot_rainbow(matchup_result_to_PRISMA_v2[[1]])
+    PRISMA_errors_plots <- plot_relative_errors(matchup_result_to_PRISMA_v2[[1]])
+    PRISMA_polar_plots <- matchup_result_to_PRISMA_v2[[2]]
+  }else{
+    PRISMA_ribbon_plots <- NULL
+    PRISMA_rainbow_plots <- NULL
+    PRISMA_errors_plots <- NULL
+    PRISMA_polar_plots <- NULL
+  }
+  
+  #get EnMAP data
+  EnMAP_data <- get_EnMAP_data(date_start = date_start,
+                               date_end = date_end)
+  
+  if(!is.null(EnMAP_data)  & !is.null(hypstar_data)){
+    matchup_result_to_EnMAP_v2 <- matchup_function_v2(sat_data = EnMAP_data,
+                                                      hypstar_data = hypstar_data,
+                                                      delVZA = c(0),
+                                                      print_polar = T)
+    EnMAP_ribbon_plots <- plot_ribbon(matchup_result_to_EnMAP_v2[[1]])
+    EnMAP_rainbow_plots <- plot_rainbow(matchup_result_to_EnMAP_v2[[1]])
+    EnMAP_errors_plots <- plot_relative_errors(matchup_result_to_EnMAP_v2[[1]])
+    EnMAP_polar_plots <- matchup_result_to_EnMAP_v2[[2]]
+  }else{
+    EnMAP_ribbon_plots <- NULL
+    EnMAP_rainbow_plots <- NULL
+    EnMAP_errors_plots <- NULL
+    EnMAP_polar_plots <- NULL
+  }
+
+  if(is.null(filename)){
+    pdf_name <- paste0(output_summary_folder,
+                       date_start,"_",
+                       date_end,".pdf")
+  }else{
+    pdf_name <- paste0(output_summary_folder,filename,".pdf")
+  }
+  
+  var <- unlist(list(s2_polar_plots,s2_ribbon_plots, s2_rainbow_plots, s2_errors_plots,
+                     PRISMA_polar_plots,PRISMA_ribbon_plots, PRISMA_rainbow_plots, PRISMA_errors_plots,
+                     EnMAP_polar_plots,EnMAP_ribbon_plots,EnMAP_rainbow_plots, EnMAP_errors_plots))
+    
+  if(length(var) > 0){
+    results_list <- list()
+    font_type <- "serif"
+    for (iter in 1:length(var)) {
+      results_list[[iter]] <- gridify::gridify(
+        var[[iter]],
+        layout = gridify::pharma_layout_A4(global_gpar = grid::gpar(fontfamily = font_type))
+      ) 
+    }
+    gridify::export_to(
+      results_list,
+      to = pdf_name,
+      width = 17, 
+      height = 8)
+    
+  }else{
+    #creaiamo un file pdf con la scritta che non ci sono matchups
+    write(paste0("No matchup in the range ", date_start, " - " , date_end),
+          file = gsub("pdf","txt",pdf_name),
+          append = F)
+  }
+}
+
+#create_week_summary ----
+create_week_summary <- function(week,
+                                year,
+                                repo_root_path_prs,
+                                output_summary_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/summary/"){
+  start_date <- as.Date(paste0(year,"-01-01")) + lubridate::weeks(week-1)
+  end_date <- as.Date(paste0(year,"-01-01")) + lubridate::weeks(week) - 1
+  
+  create_summary(date_start = start_date,
+                 date_end = end_date,
+                 repo_root_path_prs = repo_root_path_prs,
+                 filename = paste0(year,"w",sprintf("%02d", week),"_start_",start_date,"_end_",end_date),
+                 output_summary_folder = output_summary_folder)
+}
+
+generate_all_missing_summaries <- function(hypstar_home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
+                                           output_summary_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/summary/",
+                                           repo_root_path_prs){
+  
+  full_list <- data.table::data.table(folder_name = list.dirs(hypstar_home_path, recursive = FALSE, full.names = FALSE))
+    
+  folder_list  <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
+                                                   time = substr(folder_name, 12, 20)) |>
+    tidytable::pull(date) |>
+    unique()
+  
+  list_of_files_to_be <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
+                                                 time = substr(folder_name, 12, 20)) |>
+    tidytable::mutate(year = lubridate::year(date),
+                      week = lubridate::week(date)) |>
+    tidytable::select(year,week) |>
+    unique() |>
+    tidytable::mutate(name = paste0(year,"w",sprintf("%02d", week))) 
+  
+  #remove also the current week so that we wait until it has ended before doing the week summary
+  list_of_generated_summaries <- c(substring(list.files(path = output_summary_folder), 1, 7), paste0(lubridate::year(Sys.Date()),"w",lubridate::week(Sys.Date())))
+  
+  list_of_missing_summaries <- list_of_files_to_be |>
+    tidytable::filter(!(name %in% list_of_generated_summaries)) 
+  
+  for(i in 1:nrow(list_of_missing_summaries)){
+    create_week_summary(week = list_of_missing_summaries[i]$week,
+                        year = list_of_missing_summaries[i]$year,
+                        repo_root_path_prs = repo_root_path_prs,
+                        output_summary_folder = output_summary_folder) 
+  }
+  
 }
