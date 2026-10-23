@@ -13,7 +13,7 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 # date_start <- "2025-04-20"
 # date_end <- "2025-04-30"
 date_start <- "2025-04-23"
-date_end <- "2025-05-08"
+date_end <- "2025-06-08"
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" #or //10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2
 mirai::daemons(0)
 mirai::daemons(8)

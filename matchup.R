@@ -444,13 +444,13 @@ get_sat_orbit <- function(satellite, product_path){
     
     xml_data <- XML::xmlToList(data)
     
-    orbit_type <- tools::toTitleCase(tolower(xml_data[["specific"]][["orbitDirection"]]))
+    orbit_type <- tolower(xml_data[["specific"]][["orbitDirection"]])
   }else if(satellite == "PRS"){
     # hdf <- list.files(product_path, pattern = "*.he5$", full.names = T)
     # prova <- hdf5r::H5File$new(hdf, mode="r")
     # list_of_attributes <- h5attributes(prova)
     #in the list of attributes there is no "orbit type" attribute
-    orbit_type <- "Descending"
+    orbit_type <- "descending"
   }
   
   return(orbit_type)
@@ -592,7 +592,9 @@ get_s2_data <- function(date_start,
                            aggregation_type = aggregation_type,
                            pixel_aggregation_function = pixel_aggregation_function,
                            function_type = function_type,
-                           hypstar_point_path = hypstar_point_path)
+                           hypstar_point_path = hypstar_point_path,
+                           orbit_type_to_keep = orbit_type_to_keep,
+                           scale = scale)
   
   return(sat_data)
 }
@@ -837,13 +839,28 @@ matchup_function_v2 <- function(sat_data,
                                hypstar_col_renamed = hypstar_col_renamed,
                                only_same_date = only_same_date)
   
-  #POLAR PLOT
-  # if(print_polar){
-  #   plot_divide_by_date(plot_polar, dataset = date_output)
-  # }
-  
   #GEOMETRY PROBLEM
   geometry_output <- elemental_matchup(date_output = date_output)
+  
+  #POLAR PLOT
+  if(print_polar){
+    order_time_and_date <- date_output |>
+      tidytable::mutate(r = tidytable::row_number()) |>
+      tidytable::group_by(date, time_hyp) |>
+      tidytable::mutate(r = min(r)) 
+    
+    groups <- order_time_and_date |>
+      tidytable::pull(r) |>
+      unique()
+    
+    divide_by_time <- function(df,group){
+      return(df |> tidytable::mutate(operations = ":elemental:elemental:elemental:elemental")|>
+               tidytable::filter(r == group))
+    }
+    list_of_datasets_per_time <- lapply(groups, divide_by_time, df = order_time_and_date)
+    lapply(list_of_datasets_per_time, plot_polar_for_elemental, geometry_output = geometry_output)
+    # plot_divide_by_date(plot_polar, dataset = date_output)
+  }
   
   #save
   if(!is.null(filename)){
@@ -880,12 +897,14 @@ elemental_matchup <- function(date_output){
   filter_best_config <- compute_best_config |>
     tidytable::group_by(date) |>
     tidytable::filter(rel_angle_diff == min(rel_angle_diff)) |>
-    tidytable::ungroup() |>
+    tidytable::ungroup()
+    
+  return(filter_best_config |>  
     tidytable::select(-any_of(c("rel_angle_diff","rel_azimuth_sat","rel_azimuth_hyp",
                                 "rel_angle_sat","rel_angle_hyp",
                       "plane_inclination_sat","plane_inclination_hyp",
                       "plane_inclination_diff"))) |>
-    tidytable::mutate(operations = ":elemental:elemental:elemental:elemental") 
+    tidytable::mutate(operations = ":elemental:elemental:elemental:elemental") )
   
   #la divisione in rel_angle_diff e plane_inclination è motivata dalla seguente considerazione
   #
@@ -901,7 +920,6 @@ elemental_matchup <- function(date_output){
   #può distinguere il piano di inclinazione dei raggi pertanto la microstruttura cambiando 
   #il piano di inclinazione dei raggi non può essere analizzata
   
-  return(filter_best_config)
 }
 
 
@@ -1650,43 +1668,119 @@ plot_polar <- function(time_or_sun_angle_output,
                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                        filename = NULL){
   selected_data <- time_or_sun_angle_output |> tidytable::mutate(wvl_diff = abs(wvl - 900)) |>
-      tidytable::filter(wvl_diff == min(wvl_diff)) |>
-      tidytable::select(-wvl_diff) 
-    
-    exact_wvl <- unique(selected_data$wvl)
-    
-    sat_coord <- selected_data |> tidytable::select(VAA_sat, VZA_sat) |> unique()
-    
-    library(ggplot2)
-    plot <- ggplot(selected_data) +
-      geom_point(aes(x = VAA_hyp, y = VZA_hyp, color = Ref_sat-Ref_hyp),
-                 size = 3) +
-      coord_radial(theta = "x", start = -pi*15/180, thetalim = c(0,330), inner.radius = 0.1,
-                   r.axis.inside = T) +
-      geom_point(data = sat_coord, aes(x = VAA_sat, y = VZA_sat),
-                 color = "black",
-                 size = 5,
-                 shape = "cross") +
-      ylab("VZA [rad]") +
-      xlab("VAA [rad]") +
-      scale_color_gradient2('Ref_sat - Ref_hyp',      # titolo della legenda
-                            low = 'blue', mid = 'green', high = 'red',
-                            midpoint = 0)+
-      scale_x_continuous(
-        limits = c(0, 360),
-        breaks = seq(0, 330, by = 30),
-        minor_breaks = NULL
-      )+
-      ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
-    
-    if(is.null(filename)){
-      filename <- paste0("polar_plot_",paste0(make_title_for_polar_plots(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
-    }
-    
-    save_path <- paste0(output_directory, filename,".png")
-    
-    ggsave(plot = plot, filename = save_path, height = 9, width = 19)
+    tidytable::filter(wvl_diff == min(wvl_diff)) |>
+    tidytable::select(-wvl_diff) 
+  
+  exact_wvl <- unique(selected_data$wvl)
+  
+  sat_coord <- selected_data |> tidytable::select(VAA_sat, VZA_sat) |> unique()
+  
+  library(ggplot2)
+  plot <- ggplot(selected_data) +
+    geom_point(aes(x = VAA_hyp, y = VZA_hyp, color = Ref_sat-Ref_hyp),
+               size = 3) +
+    coord_radial(theta = "x", start = -pi*15/180, thetalim = c(0,330), inner.radius = 0.1,
+                 r.axis.inside = T) +
+    geom_point(data = sat_coord, aes(x = VAA_sat, y = VZA_sat),
+               color = "black",
+               size = 5,
+               shape = "cross") +
+    ylab("VZA [rad]") +
+    xlab("VAA [rad]") +
+    scale_color_gradient2('Ref_sat - Ref_hyp',      # titolo della legenda
+                          low = 'blue', mid = 'green', high = 'red',
+                          midpoint = 0)+
+    scale_x_continuous(
+      limits = c(0, 360),
+      breaks = seq(0, 330, by = 30),
+      minor_breaks = NULL
+    )+
+    ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+  
+  if(is.null(filename)){
+    filename <- paste0("polar_plot_",paste0(make_title_for_polar_plots(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+  }
+  
+  save_path <- paste0(output_directory, filename,".png")
+  
+  ggsave(plot = plot, filename = save_path, height = 9, width = 19)
+  
+  return(plot)
+}
 
+#plot_polar_for_elemental ----
+plot_polar_for_elemental <- function(time_or_sun_angle_output,
+                       output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
+                       filename = NULL,
+                       geometry_output){
+  selected_data <- time_or_sun_angle_output |> tidytable::mutate(wvl_diff = abs(wvl - 900)) |>
+    tidytable::filter(wvl_diff == min(wvl_diff)) |>
+    tidytable::select(-wvl_diff) 
+  
+  today <- selected_data |> tidytable::pull(date) |> unique()
+  
+  now <- selected_data |> tidytable::pull(time_hyp) |> unique()
+  
+  selected_geometry <- geometry_output |> tidytable::filter(date == today) 
+  
+  elem_VAA <- selected_geometry |> tidytable::pull(VAA_hyp) |> unique()
+  
+  elem_VZA <- selected_geometry |> tidytable::pull(VZA_hyp) |> unique()
+  
+  elem_time <- selected_geometry |> tidytable::pull(time_hyp) |> unique()
+  
+  exact_wvl <- unique(selected_data$wvl)
+  
+  geom_coord <- selected_geometry |> tidytable::select(VAA_hyp, VZA_hyp) |> unique()
+  
+  sat_coord <- selected_data |> tidytable::select(VAA_sat, VZA_sat) |> unique()
+  
+  best <- selected_data |> tidytable::filter(abs(Ref_sat-Ref_hyp) == min(abs(Ref_sat-Ref_hyp))) |> 
+    tidytable::select(VAA_hyp, VZA_hyp) |> 
+    unique()
+  
+  library(ggplot2)
+  plot <- ggplot(selected_data) +
+    geom_point(aes(x = VAA_hyp, y = VZA_hyp, color = Ref_sat-Ref_hyp),
+               size = 3) +
+    coord_radial(theta = "x", start = -pi*15/180, thetalim = c(0,330), inner.radius = 0.1,
+                 r.axis.inside = T) +
+    geom_point(data = sat_coord, aes(x = VAA_sat, y = VZA_sat),
+               color = "black",
+               size = 5,
+               shape = "cross") +
+    ylab("VZA [rad]") +
+    xlab("VAA [rad]") +
+    scale_color_gradient2('Ref_sat - Ref_hyp',      # titolo della legenda
+                          low = 'blue', mid = 'green', high = 'red',
+                          midpoint = 0)+
+    scale_x_continuous(
+      limits = c(0, 360),
+      breaks = seq(0, 330, by = 30),
+      minor_breaks = NULL
+    )+
+    ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+  
+  if(elem_time == unique(selected_data$time_hyp)){
+    plot <- plot + 
+      geom_point(data = geom_coord, aes(x = VAA_hyp, y = VZA_hyp),
+                 color = "#B300FF",
+                 size = 10,
+                 shape = 1) + 
+      geom_point(data = best, aes(x = VAA_hyp, y = VZA_hyp),
+                 color = "brown",
+                 size = 5,
+                 shape = 1)
+  }
+  
+  if(is.null(filename)){
+    filename <- paste0("polar_plot_",make_title_for_polar_plots(selected_data),"_hyptime_",gsub(":","",now),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0))
+  }
+  
+  save_path <- paste0(output_directory, filename,".png")
+  
+  ggsave(plot = plot, filename = save_path, height = 9, width = 19)
+  
   return(plot)
 }
 
