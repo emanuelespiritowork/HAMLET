@@ -14,9 +14,9 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 # date_end <- "2025-04-30"
 date_start <- "2025-04-23"
 date_end <- "2025-04-25"
-repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" 
+# repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" 
 #or 
-# repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2"
+repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2"
 mirai::daemons(0)
 mirai::daemons(8)
 
@@ -71,6 +71,16 @@ plot <- plot_relative_errors(matchup_result_to_S2_v2[[1]])
 PRISMA_data <- get_PRISMA_data(date_start = date_start,
                                date_end = date_end,
                                repo_root_path = repo_root_path_prs) 
+
+#v2
+matchup_result_to_PRISMA_v2 <- matchup_function_v2(sat_data = PRISMA_data,
+                                               hypstar_data = hypstar_data,
+                                               delVZA = c(0),
+                                               print_polar = T)
+
+plot <- plot_ribbon(matchup_result_to_PRISMA_v2[[1]])
+plot <- plot_rainbow(matchup_result_to_PRISMA_v2[[1]])
+plot <- plot_relative_errors(matchup_result_to_PRISMA_v2[[1]])
 
 #matchup to PRISMA
 matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
