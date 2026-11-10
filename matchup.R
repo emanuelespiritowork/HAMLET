@@ -1561,7 +1561,8 @@ plot_rainbow <- function(matchup_result,
                   intercept = 0,
                   alpha = 0.4,
                   linetype = "dashed")+
-      xlab("Hypstar R [-]")
+      xlab("Hypstar R [-]")+
+      theme(aspect.ratio = 1)
     
     if(is.null(filename)){
       filename <- paste0("rainbow_",title)
@@ -1823,7 +1824,7 @@ plot_polar_for_elemental <- function(geometry_output,
   }
   
   #set relative width to ggpubr so that the plots are with right ratio
-  comboplot <- ggpubr::ggarrange(plot,table_to_plot)
+  comboplot <- ggpubr::ggarrange(plot,table_to_plot, widths = c(1.1,1))
   
   save_path <- paste0(output_directory, filename,".png")
   
@@ -2088,4 +2089,85 @@ generate_all_missing_summaries <- function(hypstar_home_path = "//10.0.1.243/pro
                         output_summary_folder = output_summary_folder) 
   }
   
+}
+
+create_timeline_for_hyper <- function(repo_root_path_prs = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2/",
+                                      repo_root_path_enm = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/"){
+  #enmap descriptors
+  years <- 2024:lubridate::year(Sys.time())
+  enmap_acquisitions <- as.Date(substring(list.dirs(paste0(repo_root_path_enm,years,"/L2A"), recursive = F, full.names = F),
+            30,37), format = "%Y%m%d")
+  
+  enmap_db <- data.frame(date = enmap_acquisitions, group = rep("EnMAP",length(enmap_acquisitions)))
+  
+  prisma_acquisitions <- as.Date(substring(list.dirs(repo_root_path_prs, recursive = F, full.names = F),13,20),
+                                 format = "%Y%m%d")             
+  
+  prisma_db <- data.frame(date = prisma_acquisitions, group = rep("PRISMA",length(prisma_acquisitions)))
+  
+  return(prisma_db |> tidytable::bind_rows(enmap_db) |> tidytable::filter(date > "2024-01-01"))
+}
+
+create_timeline_for_multi <- function(repo_root_path_s2 = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/"){
+  #enmap descriptors
+  
+  paste0(repo_root_path_s2,years)
+  years <- 2024:lubridate::year(Sys.time())
+  s2_acquisitions <- as.Date(substring(list.dirs(paste0(repo_root_path_s2,years), recursive = F, full.names = F),
+                                          8,15), format = "%Y%m%d")
+  
+  s2_type <- substring(list.dirs(paste0(repo_root_path_s2,years), recursive = F, full.names = F),
+                                       24,26)
+  
+  s2_db <- data.frame(date = s2_acquisitions, group = s2_type)
+  
+  return(s2_db)
+}
+
+create_timeline <- function(timeline_repo = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Timelines/csv"){
+  planning <- tidytable::fread(paste0(timeline_repo,"/field_planning.csv")) |>
+    tidytable::mutate(date_start = as.Date(date_start, format = "%d/%m/%Y")) |>
+    tidytable::mutate(date_end = as.Date(date_end, format = "%d/%m/%Y")) |>
+    tidytable::mutate(group = "crop_plan") |>
+    tidytable::rename(type = crop_type) 
+  
+  events <- tidytable::fread(paste0(timeline_repo,"/field_events.csv")) |>
+    tidytable::mutate(date_start = as.Date(date, format = "%d/%m/%Y")) |>
+    tidytable::mutate(date_end = as.Date(date, format = "%d/%m/%Y")) |>
+    tidytable::mutate(group = "events") |>
+    tidytable::select(-tidytable::any_of(c("date","clock")))
+  
+  hyperspectral_acquisitions <- tidytable::fread(paste0(timeline_repo,"/hyperspectral_acquisitions.csv")) |>
+    tidytable::mutate(date_start = as.Date(date, format = "%d/%m/%Y")) |>
+    tidytable::mutate(date_end = as.Date(date, format = "%d/%m/%Y")) |>
+    tidytable::select(-tidytable::any_of(c("date","clock")))
+    
+  multispectral_acquisitions <- tidytable::fread(paste0(timeline_repo,"/multispectral_acquisitions.csv")) |>
+    tidytable::mutate(date_start = as.Date(date, format = "%d/%m/%Y")) |>
+    tidytable::mutate(date_end = as.Date(date, format = "%d/%m/%Y")) |>
+    tidytable::select(-tidytable::any_of(c("date","clock")))
+  
+  color_and_groups <- data.frame(type = c("none","scattered_clouds",
+                                          "clear_sky","haze_cirrus_clouds",
+                                          "cloudy","partly_cloud",NA),
+                                 plotcolor = c("black","lightblue",
+                                               "blue","lightgrey",
+                                               "grey","lightblue","black"))
+  
+  binded_database <- hyperspectral_acquisitions |>
+    tidytable::bind_rows(multispectral_acquisitions) |>
+    tidytable::left_join(color_and_groups) |>
+    tidytable::bind_rows(events)|>
+    tidytable::bind_rows(planning)
+  
+  plotlyplot <- vistime::vistime(data = binded_database,
+                   col.event = "type",
+                   col.start = "date_start",
+                   col.end = "date_end",
+                   col.group = "group",
+                   col.color = "plotcolor",
+                   linewidth = 15,
+                   show_labels = F)
+  
+  return(plotlyplot)
 }
