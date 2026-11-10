@@ -372,13 +372,24 @@ get_sat_bands_list_and_names <- function(satellite,product_path){
     print(product_path)
     
     image_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
-                             pattern = "\\.BSQ$")
+                             pattern = "SPECTRAL_IMAGE.BSQ$")
+    tif <- FALSE
+    if(identical(image_path,character(0))){
+      image_path <- list.files(paste0(product_path, "/"), full.names = T, recursive = T,
+                               pattern = "SPECTRAL_IMAGE.TIF$")
+      tif <- TRUE
+    }
     
     image <- terra::rast(image_path)
     
     list_of_rasters <- lapply(1:terra::nlyr(image), function(x){return(image[[x]])})
     
-    extract_names <- unlist(lapply(strsplit(names(image)," "), function(x){return(paste0("B",x[[2]]))}))
+    if(tif){
+      extract_names <- unlist(lapply(strsplit(names(image),"_"), function(x){return(paste0("B",x[[11]]))}))
+    }else{
+      extract_names <- unlist(lapply(strsplit(names(image)," "), function(x){return(paste0("B",x[[2]]))}))
+    }
+    
     return(list(list_of_rasters,extract_names))
   }
 }
@@ -1782,9 +1793,9 @@ plot_polar_for_elemental <- function(geometry_output,
   table <- geom_coord |> tidytable::select(rmse, rel_angle_hyp, rel_angle_diff, plane_inclination_hyp, plane_inclination_diff, average_diff) |> 
     tidytable::mutate(tidytable::across(.cols = everything(), ~round(.x,2)))
   
-  table_to_plot <- table_cell_font(
-    table_cell_font(
-    table_cell_font(tab = ggpubr::ggtexttable(table), row = 1, column = 7, color = "#0000FF"),
+  table_to_plot <- ggpubr::table_cell_font(
+    ggpubr::table_cell_font(
+    ggpubr::table_cell_font(tab = ggpubr::ggtexttable(table), row = 1, column = 7, color = "#0000FF"),
     row = 1, column = 4, color = "#B300FF"),
     row = 1, column = 2, color = "brown")
     
@@ -1811,6 +1822,7 @@ plot_polar_for_elemental <- function(geometry_output,
     filename <- paste0("polar_plot_",make_title_for_polar_plots_elemental(geom_coord),"_VZA_sat_",round(unique(geom_coord$VZA_sat),0),"_VAA_sat_",round(unique(geom_coord$VAA_sat),0))
   }
   
+  #set relative width to ggpubr so that the plots are with right ratio
   comboplot <- ggpubr::ggarrange(plot,table_to_plot)
   
   save_path <- paste0(output_directory, filename,".png")
@@ -2018,8 +2030,8 @@ create_summary <- function(date_start,
     gridify::export_to(
       results_list,
       to = pdf_name,
-      width = 17, 
-      height = 8)
+      width = 22, 
+      height = 11)
     
   }else{
     #creaiamo un file pdf con la scritta che non ci sono matchups

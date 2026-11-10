@@ -12,8 +12,8 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 # date_end <- "2024-11-14"
 # date_start <- "2025-04-20"
 # date_end <- "2025-04-30"
-date_start <- "2025-04-23"
-date_end <- "2025-04-25"
+date_start <- "2025-03-15"
+date_end <- "2025-06-15"
 # repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" 
 #or 
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2"
@@ -51,7 +51,7 @@ matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
                  range_view_angle = 360,
                  delVZA = c(0),
                  weighted_mean = F,
-                 print_polar = T)
+                 print_polar = F)
 
 plot <- plot_ribbon(matchup_result_to_S2)
 plot <- plot_rainbow(matchup_result_to_S2)
@@ -129,6 +129,16 @@ plot <- plot_relative_errors(matchup_result_to_PRISMA)
 #get EnMAP data
 EnMAP_data <- get_EnMAP_data(date_start = date_start,
                              date_end = date_end)
+
+#v2
+matchup_result_to_EnMAP_v2 <- matchup_function_v2(sat_data = EnMAP_data,
+                                                   hypstar_data = hypstar_data,
+                                                   delVZA = c(0),
+                                                   print_polar = T)
+
+plot <- plot_ribbon(matchup_result_to_EnMAP_v2[[1]])
+plot <- plot_rainbow(matchup_result_to_EnMAP_v2[[1]])
+plot <- plot_relative_errors(matchup_result_to_EnMAP_v2[[1]])
 
 #matchup to EnMAP
 matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
