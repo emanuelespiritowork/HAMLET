@@ -2109,56 +2109,126 @@ create_timeline_for_hyper <- function(repo_root_path_prs = "//10.0.1.243/nr_data
 }
 
 create_timeline_for_multi <- function(repo_root_path_s2 = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/"){
-  #enmap descriptors
-  
-  paste0(repo_root_path_s2,years)
   years <- 2024:lubridate::year(Sys.time())
   s2_acquisitions <- as.Date(substring(list.dirs(paste0(repo_root_path_s2,years), recursive = F, full.names = F),
                                           8,15), format = "%Y%m%d")
+  all_json <- list.files(paste0(repo_root_path_s2,years), pattern = "*.json$", recursive = T,
+             full.names = T)
   
-  s2_type <- substring(list.dirs(paste0(repo_root_path_s2,years), recursive = F, full.names = F),
-                                       24,26)
+  all_read_json <- lapply(all_json,jsonlite::read_json)
   
-  s2_db <- data.frame(date = s2_acquisitions, group = s2_type)
+  all_orbit_types <- lapply(all_read_json,
+                            function(x){
+                              date <- as.Date(x$properties$datetime)
+                              sat <- substring(x$properties$`s2:product_uri`,1,3)
+                              orbit <- x$properties$`sat:relative_orbit`
+                              tile <- x$properties$`s2:tile_id`
+                              return(data.frame(date = date,
+                                                sat = sat,
+                                                orbit = orbit,
+                                                tile = tile))
+                            }
+                            ) |>
+    tidytable::bind_rows()
   
-  return(s2_db)
+  valid_acquisitions <- all_orbit_types |>
+    tidytable::filter(orbit == "22") |>
+    tidytable::filter(tile == "32TQQ") |>
+    tidytable::rename(group = sat) |>
+    tidytable::select(-c("orbit","tile")) |> #remove datastrip acquisitions duplicated
+    tidytable::group_by(group, date) |>
+    tidytable::filter(tidytable::row_number()==1) |>
+    tidytable::ungroup()
+  
+  return(valid_acquisitions)
+}
+
+create_timeline_for_hypstar <- function(hypstar_home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED"){
+  full_list <- data.table::data.table(folder_name = list.dirs(hypstar_home_path, recursive = FALSE, full.names = FALSE))
+  
+  folder_list  <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
+                                                 time = substr(folder_name, 12, 20)) |>
+    tidytable::pull(date) |>
+    unique()
+  
+  list_of_files_to_be <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
+                                                        time = substr(folder_name, 12, 20)) |>
+    tidytable::pull(date) |>
+    unique()
+  
+  hypstar_list <- tapply(list_of_files_to_be, cumsum(c(TRUE, diff(list_of_files_to_be) > 2)), range) 
+  listed <- lapply(1:length(hypstar_list),function(x,hypstar_list){return(hypstar_list[[x]])},
+         hypstar_list  =hypstar_list)
+  hypstar_db <- lapply(listed, function(x){return(data.frame(date_start = x[[1]], date_end = x[[2]]))}) |>
+    tidytable::bind_rows() |>
+    tidytable::mutate(group = "HYPSTAR") |>
+    tidytable::mutate(type = "clear_sky") 
+  
+  return(hypstar_db)
 }
 
 create_timeline <- function(timeline_repo = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Timelines/csv"){
   planning <- tidytable::fread(paste0(timeline_repo,"/field_planning.csv")) |>
     tidytable::mutate(date_start = as.Date(date_start, format = "%d/%m/%Y")) |>
     tidytable::mutate(date_end = as.Date(date_end, format = "%d/%m/%Y")) |>
-    tidytable::mutate(group = "crop_plan") |>
-    tidytable::rename(type = crop_type) 
+    tidytable::rowwise() |>
+    tidytable::mutate(tooltip = paste0(type, " from ", date_start, " to ", date_end))
   
-  events <- tidytable::fread(paste0(timeline_repo,"/field_events.csv")) |>
+  events <- readxl::read_excel("//10.0.1.243/projects/2023_HyperNet-POP/7-IMAGES/Quaderno di campo 4SA HYPSTAR.xlsx", 
+                                              col_types = c("date", "text", "text", "text")) |>
+    tidytable::rename(date = Data) |>
+    tidytable::mutate(date = as.Date(date)) |>
     tidytable::mutate(date_start = as.Date(date, format = "%d/%m/%Y")) |>
     tidytable::mutate(date_end = as.Date(date, format = "%d/%m/%Y")) |>
-    tidytable::mutate(group = "events") |>
-    tidytable::select(-tidytable::any_of(c("date","clock")))
+    tidytable::select(-tidytable::any_of(c("date","clock"))) |>
+    tidytable::rename(tooltip = Note)
   
-  hyperspectral_acquisitions <- tidytable::fread(paste0(timeline_repo,"/hyperspectral_acquisitions.csv")) |>
+  HSI_classified <- tidytable::fread(paste0(timeline_repo,"/hyperspectral_acquisitions.csv")) |>
+    tidytable::mutate(date = as.Date(date, format = "%d/%m/%Y"))
+  
+  MSI_classified <- tidytable::fread(paste0(timeline_repo,"/multispectral_acquisitions.csv"))|>
+    tidytable::mutate(date = as.Date(date, format = "%d/%m/%Y"))
+  
+  hyperspectral_acquisitions <- create_timeline_for_hyper() |>
+    tidytable::left_join(HSI_classified) |>
+    tidytable::mutate(type = tidytable::if_else(is.na(type),"unclassified",type)) |>
     tidytable::mutate(date_start = as.Date(date, format = "%d/%m/%Y")) |>
     tidytable::mutate(date_end = as.Date(date, format = "%d/%m/%Y")) |>
-    tidytable::select(-tidytable::any_of(c("date","clock")))
-    
-  multispectral_acquisitions <- tidytable::fread(paste0(timeline_repo,"/multispectral_acquisitions.csv")) |>
+    tidytable::select(-tidytable::any_of(c("date","clock"))) |>
+    tidytable::mutate(tooltip = paste0(group, " ", type, " acquisition on ", date_start))
+  
+  multispectral_acquisitions <- create_timeline_for_multi() |>
+    tidytable::left_join(MSI_classified, by = c("group","date"))|>
+    tidytable::mutate(type = tidytable::if_else(is.na(type),"unclassified",type)) |>
     tidytable::mutate(date_start = as.Date(date, format = "%d/%m/%Y")) |>
     tidytable::mutate(date_end = as.Date(date, format = "%d/%m/%Y")) |>
-    tidytable::select(-tidytable::any_of(c("date","clock")))
+    tidytable::select(-tidytable::any_of(c("date","clock"))) |>
+    tidytable::mutate(tooltip = paste0(group, " ", type, " acquisition on ", date_start))
   
-  color_and_groups <- data.frame(type = c("none","scattered_clouds",
+  hypstar_acquisitions <- create_timeline_for_hypstar() |>
+    tidytable::mutate(tooltip = paste0(group, " ", type, " acquisition on ", date_start))
+  
+  color_and_groups <- data.frame(type = c("unclassified","scattered_clouds",
                                           "clear_sky","haze_cirrus_clouds",
-                                          "cloudy","partly_cloud",NA),
+                                          "cloudy","partly_cloud",NA,
+                                          "harvest","tillage","sowing",
+                                          "flowering","positive","negative",
+                                          "wheat","cover",
+                                          "soybean"),
                                  plotcolor = c("black","lightblue",
                                                "blue","lightgrey",
-                                               "grey","lightblue","black"))
+                                               "grey","lightblue","black",
+                                               "gold","brown","green",
+                                               "pink","green","red",
+                                               "darkgreen","red",
+                                               "darkorange"))
   
   binded_database <- hyperspectral_acquisitions |>
     tidytable::bind_rows(multispectral_acquisitions) |>
-    tidytable::left_join(color_and_groups) |>
     tidytable::bind_rows(events)|>
-    tidytable::bind_rows(planning)
+    tidytable::bind_rows(planning)|>
+    tidytable::bind_rows(hypstar_acquisitions) |>
+    tidytable::left_join(color_and_groups, by = c("type"))
   
   plotlyplot <- vistime::vistime(data = binded_database,
                    col.event = "type",
@@ -2166,6 +2236,7 @@ create_timeline <- function(timeline_repo = "//10.0.1.243/nr_working/emanuele/Pr
                    col.end = "date_end",
                    col.group = "group",
                    col.color = "plotcolor",
+                   col.tooltip = "tooltip",
                    linewidth = 15,
                    show_labels = F)
   
