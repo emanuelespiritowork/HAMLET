@@ -12,8 +12,8 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 # date_end <- "2024-11-14"
 # date_start <- "2025-04-20"
 # date_end <- "2025-04-30"
-date_start <- "2025-03-15"
-date_end <- "2025-06-15"
+date_start <- "2025-04-21"
+date_end <- "2025-04-30"
 # repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" 
 #or 
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2"
@@ -144,8 +144,8 @@ plot <- plot_relative_errors(matchup_result_to_EnMAP_v2[[1]])
 matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                             hypstar_data = hypstar_data,
                                                      time_or_sun_angle = T,
-                                                     just_closest_time_or_sun_angle = F,
-                                                     range_time_or_sun_angle = 1,
+                                                     just_closest_time_or_sun_angle = T,
+                                                     range_time_or_sun_angle = NULL,
                                                      just_closest_view_angle = F,
                                                      range_view_angle = 360,
                                                      delVZA = c(0),

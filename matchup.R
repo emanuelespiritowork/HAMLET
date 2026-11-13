@@ -4,6 +4,36 @@
 #Year: 2025
 #Purpose: create matchup between hypstar station and satellite data
 
+#search_for_already_downloaded ----
+search_for_already_downloaded <- function(date_start,
+                                          date_end,
+                                          output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/",
+                                          pattern){
+  list_of_files <- list.files(path = output_directory, pattern = pattern, full.names = T)
+  
+  if(!identical(list_of_files,character(0))){
+    dates_file <- lapply(tools::file_path_sans_ext(basename(list_of_files)),
+                    function(x){return(data.frame(start_date = as.Date(strsplit(x,"_")[[1]][[4]]),
+                                                  end_date = as.Date(strsplit(x,"_")[[1]][[6]]),
+                                                  file_path = paste0(output_directory,x,".csv")))}) |>
+      tidytable::bind_rows() |>
+      tidytable::mutate(search_start = as.Date(date_start), search_end = as.Date(date_end)) |>
+      tidytable::rowwise() |>
+      tidytable::mutate(filtro = (search_start >= start_date & search_end <= end_date)) |>
+      tidytable::ungroup() |>
+      tidytable::filter(filtro) |>
+      tidytable::mutate(date_diff = end_date - start_date) |>
+      tidytable::arrange(date_diff)
+    
+    filter_file <- tidytable::fread(dates_file$file_path[[1]]) |> 
+      tidytable::filter(date >= date_start & date <= date_end)
+  }else{
+    filter_file <- NULL
+  }
+  
+  return(filter_file)
+}
+
 #get_hypstar_data ----
 get_hypstar_data <- function(date_start,
                              date_end,
@@ -13,6 +43,20 @@ get_hypstar_data <- function(date_start,
                              output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
   
   print(paste0("Retrieving HYPSTAR data from ", date_start, " to ", date_end))
+  
+  dates <- search_for_already_downloaded(date_start = date_start,
+                                date_end = date_end,
+                                output_directory = output_directory,
+                                pattern = "hypstar_data_from")
+  
+  if(!is.null(dates)){
+    print("Found already extracted file")
+    if(nrow(dates) > 0){
+      return(dates)
+    }else{
+      return(NULL)
+    }
+  }
   
   full_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE))
   
@@ -540,9 +584,9 @@ get_sat_data <- function(product_paths,
     return(NULL)
   }
   
-  hypstar_point <- sf::st_read(hypstar_point_path)
+  hypstar_point <- invisible(sf::st_read(hypstar_point_path))
   
-  hypstar_point_buffered <- sf::st_buffer(hypstar_point, dist = 30) 
+  hypstar_point_buffered <- invisible(sf::st_buffer(hypstar_point, dist = 30) )
   
   all_datasets <- mirai::mirai_map(product_paths, function(x){return(get_statistics_dataset(satellite,x,hypstar_point_buffered,aggregation_type,number_closest_pixels,function_type))},
                                    get_statistics_dataset = get_statistics_dataset,
@@ -591,12 +635,30 @@ get_sat_data <- function(product_paths,
 get_s2_data <- function(date_start, 
                         date_end,
                         repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/", #masked S2 data
-                        number_closest_pixels = 36,
+                        number_closest_pixels = 20,
                         scale = NA, #the number to divide to
                         aggregation_type = "mean", # this can be 1,2,3 depending on: 
                         function_type = "exact",
                         orbit_type_to_keep = c("descending"),
-                        hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp"){
+                        hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
+                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
+  print(paste0("Retrieving S2 data from ", date_start, " to ", date_end))
+  
+  dates <- search_for_already_downloaded(date_start = date_start,
+                                         date_end = date_end,
+                                         output_directory = output_directory,
+                                         pattern = "S2_data_from")
+  
+  if(!is.null(dates)){
+    print("Found already extracted file")
+    if(nrow(dates) > 0){
+      return(dates)
+    }else{
+      print("No S2 acquisitions found in those range of dates")
+      return(NULL)
+    }
+  }
+  
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
   years <- as.character(year_start:year_end)
@@ -621,6 +683,12 @@ get_s2_data <- function(date_start,
                            orbit_type_to_keep = orbit_type_to_keep,
                            scale = scale)
   
+  if(!is.null(sat_data)){
+    tidytable::fwrite(sat_data,
+                      paste0(output_directory,"S2_data_from_", date_start, "_to_", date_end, ".csv"),
+                      append = F)
+  }
+  
   return(sat_data)
 }
 
@@ -634,12 +702,24 @@ get_PRISMA_data <- function(date_start,
                             scale = NA, #the number to divide to
                             aggregation_type = "mean", 
                             function_type = "exact",
-                            orbit_type_to_keep = c("descending")){
-  # year_start <- lubridate::year(as.Date(date_start))
-  # year_end <- lubridate::year(as.Date(date_end))
-  # years <- as.character(year_start:year_end)
-  # repo_year_path <- paste0(repo_root_path, years, "/", PRISMA_level_product, "/")
+                            orbit_type_to_keep = c("descending"),
+                            output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
+  print(paste0("Retrieving PRISMA data from ", date_start, " to ", date_end))
   
+  dates <- search_for_already_downloaded(date_start = date_start,
+                                         date_end = date_end,
+                                         output_directory = output_directory,
+                                         pattern = "PRISMA_data_from")
+  
+  if(!is.null(dates)){
+    print("Found already extracted file")
+    if(nrow(dates) > 0){
+      return(dates)
+    }else{
+      print("No PRISMA acquisitions found in those range of dates")
+      return(NULL)
+    }
+  }
   #now you enter in the folder where there are products
   #TEMPORARY
   list_of_products <- list.dirs(path = repo_root_path,full.names = T,recursive = F)
@@ -655,6 +735,13 @@ get_PRISMA_data <- function(date_start,
                            hypstar_point_path = hypstar_point_path,
                            orbit_type_to_keep = orbit_type_to_keep,
                            scale = scale)
+  
+  if(!is.null(sat_data)){
+    tidytable::fwrite(sat_data,
+                      paste0(output_directory,"PRISMA_data_from_", date_start, "_to_", date_end, ".csv"),
+                      append = F)
+  }
+  
   return(sat_data)
 }
 
@@ -664,11 +751,29 @@ get_EnMAP_data <- function(date_start,
                            EnMAP_level_product = "L2A", #enmap level product
                            hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp", #hypstar shapefile path
                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #the main folder of EnMAP data
-                           number_closest_pixels = 4,
+                           number_closest_pixels = 2,
                            scale = NA,
                            aggregation_type = "mean", 
                            function_type = "exact",
-                           orbit_type_to_keep = c("descending")){
+                           orbit_type_to_keep = c("descending"),
+                           output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
+  print(paste0("Retrieving EnMAP data from ", date_start, " to ", date_end))
+  
+  dates <- search_for_already_downloaded(date_start = date_start,
+                                         date_end = date_end,
+                                         output_directory = output_directory,
+                                         pattern = "EnMAP_data_from")
+  
+  if(!is.null(dates)){
+    print("Found already extracted file")
+    if(nrow(dates) > 0){
+      return(dates)
+    }else{
+      print("No EnMAP acquisitions found in those range of dates")
+      return(NULL)
+    }
+  }
+  
   year_start <- lubridate::year(as.Date(date_start))
   year_end <- lubridate::year(as.Date(date_end))
   years <- as.character(year_start:year_end)
@@ -692,6 +797,12 @@ get_EnMAP_data <- function(date_start,
                            hypstar_point_path = hypstar_point_path,
                            orbit_type_to_keep = orbit_type_to_keep,
                            scale = scale)
+  
+  if(!is.null(sat_data)){
+    tidytable::fwrite(sat_data,
+                      paste0(output_directory,"EnMAP_data_from_", date_start, "_to_", date_end, ".csv"),
+                      append = F)
+  }
   
   return(sat_data)
 }
@@ -872,11 +983,14 @@ matchup_function_v2 <- function(sat_data,
   geometry_output <- elemental_matchup(date_output = date_output)
   
   selected_geometry <- geometry_output |>
-    tidytable::filter(best_geometry) |>  
-    tidytable::select(-any_of(c("rel_angle_diff","rel_azimuth_sat","rel_azimuth_hyp",
-                                "rel_angle_sat","rel_angle_hyp",
-                                "plane_inclination_sat","plane_inclination_hyp",
-                                "plane_inclination_diff","best_geometry"))) 
+    tidytable::filter(best_geometry_1) |>  
+    tidytable::select(-any_of(c("RA_diff","rel_azimuth_sat","rel_azimuth_hyp",
+                                "RA_sat","RA_hyp",
+                                "PI_sat","PI_hyp",
+                                "PI_diff","SE_diff",
+                                "SE_sat","SE_hyp","average_RA_PI_diff",
+                                "average_RE_PI_SE_diff","best_geometry_1",
+                                "best_geometry_2","best_geometry_3"))) 
   
   #POLAR PLOT
   if(print_polar){
@@ -915,35 +1029,41 @@ matchup_function_v2 <- function(sat_data,
 elemental_matchup <- function(date_output){
   compute_best_config <- date_output |> 
     tidytable::mutate(rel_azimuth_sat = abs(SAA_sat-VAA_sat),
-                                                          rel_azimuth_hyp = abs(SAA_hyp-VAA_hyp)) |>
+                      rel_azimuth_hyp = abs(SAA_hyp-VAA_hyp)) |>
     #using now the cosine law https://en.wikipedia.org/wiki/Law_of_cosines
-    # rel_angle_sat = acos( (cos(a*pi/180)/cos(b*pi/180) + cos(b*pi/180)/cos(a*pi/180) - tan(a*pi/180)*sin(a*pi/180)*cos(b*pi/180) - tan(b*pi/180)*sin(b*pi/180)*cos(a*pi/180) + 2*sin(a*pi/180)*sin(b*pi/180)*cos(c*pi/180) )/2) *180/pi
-    # tidytable::mutate(rel_angle_sat_v2 = acos( (cos(VZA_sat*pi/180)/cos(SZA_sat*pi/180) + cos(SZA_sat*pi/180)/cos(VZA_sat*pi/180) - tan(VZA_sat*pi/180)*sin(VZA_sat*pi/180)*cos(SZA_sat*pi/180) - tan(SZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(VZA_sat*pi/180) + 2*sin(VZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180) )/2) *180/pi ) |>
-    # tidytable::mutate(rel_angle_hyp_v2 = acos( (cos(VZA_hyp*pi/180)/cos(SZA_hyp*pi/180) + cos(SZA_hyp*pi/180)/cos(VZA_hyp*pi/180) - tan(VZA_hyp*pi/180)*sin(VZA_hyp*pi/180)*cos(SZA_hyp*pi/180) - tan(SZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(VZA_hyp*pi/180) + 2*sin(VZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180) )/2) *180/pi ) |>
-    tidytable::mutate(rel_angle_sat = acos( cos(VZA_sat*pi/180) * cos(SZA_sat*pi/180) + sin(VZA_sat*pi/180) * sin(SZA_sat*pi/180) * cos(rel_azimuth_sat*pi/180) )*180/pi ) |>
-    tidytable::mutate(rel_angle_hyp = acos( cos(VZA_hyp*pi/180) * cos(SZA_hyp*pi/180) + sin(VZA_hyp*pi/180) * sin(SZA_hyp*pi/180) * cos(rel_azimuth_hyp*pi/180) )*180/pi ) |>
+    # RA_sat = acos( (cos(a*pi/180)/cos(b*pi/180) + cos(b*pi/180)/cos(a*pi/180) - tan(a*pi/180)*sin(a*pi/180)*cos(b*pi/180) - tan(b*pi/180)*sin(b*pi/180)*cos(a*pi/180) + 2*sin(a*pi/180)*sin(b*pi/180)*cos(c*pi/180) )/2) *180/pi
+    # tidytable::mutate(RA_sat_v2 = acos( (cos(VZA_sat*pi/180)/cos(SZA_sat*pi/180) + cos(SZA_sat*pi/180)/cos(VZA_sat*pi/180) - tan(VZA_sat*pi/180)*sin(VZA_sat*pi/180)*cos(SZA_sat*pi/180) - tan(SZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(VZA_sat*pi/180) + 2*sin(VZA_sat*pi/180)*sin(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180) )/2) *180/pi ) |>
+    # tidytable::mutate(RA_hyp_v2 = acos( (cos(VZA_hyp*pi/180)/cos(SZA_hyp*pi/180) + cos(SZA_hyp*pi/180)/cos(VZA_hyp*pi/180) - tan(VZA_hyp*pi/180)*sin(VZA_hyp*pi/180)*cos(SZA_hyp*pi/180) - tan(SZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(VZA_hyp*pi/180) + 2*sin(VZA_hyp*pi/180)*sin(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180) )/2) *180/pi ) |>
+    tidytable::mutate(RA_sat = acos( cos(VZA_sat*pi/180) * cos(SZA_sat*pi/180) + sin(VZA_sat*pi/180) * sin(SZA_sat*pi/180) * cos(rel_azimuth_sat*pi/180) )*180/pi ) |>
+    tidytable::mutate(RA_hyp = acos( cos(VZA_hyp*pi/180) * cos(SZA_hyp*pi/180) + sin(VZA_hyp*pi/180) * sin(SZA_hyp*pi/180) * cos(rel_azimuth_hyp*pi/180) )*180/pi ) |>
     #using now the dihedral angle https://en.wikipedia.org/wiki/Dihedral_angle
     # plane_inclination = acos(abs(tan(a*pi/180))/sqrt(1+tan(a*pi/180)^2+((tan(a*pi/180)-tan(b*pi/180)*cos(c*pi/180))/(tan(b*pi/180)*sin(c*pi/180)))^2))*180/pi
-    tidytable::mutate(plane_inclination_sat = acos(abs(tan(VZA_sat*pi/180))/sqrt(1+tan(VZA_sat*pi/180)^2+((tan(VZA_sat*pi/180)-tan(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180))/(tan(SZA_sat*pi/180)*sin(rel_azimuth_sat*pi/180)))^2))*180/pi ) |>
-    tidytable::mutate(plane_inclination_hyp = acos(abs(tan(VZA_hyp*pi/180))/sqrt(1+tan(VZA_hyp*pi/180)^2+((tan(VZA_hyp*pi/180)-tan(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180))/(tan(SZA_hyp*pi/180)*sin(rel_azimuth_hyp*pi/180)))^2))*180/pi ) |>
-    tidytable::mutate(plane_inclination_diff = abs(plane_inclination_sat-plane_inclination_hyp)) |>
-    tidytable::mutate(rel_angle_diff = abs(rel_angle_sat-rel_angle_hyp)) |>
-    tidytable::group_by(time_hyp, VZA_hyp, VAA_hyp) |>
-    tidytable::mutate(rel_angle_diff = mean(rel_angle_diff)) |>
-    tidytable::mutate(plane_inclination_diff = mean(plane_inclination_diff)) |>
+    tidytable::mutate(PI_sat = acos(abs(tan(VZA_sat*pi/180))/sqrt(1+tan(VZA_sat*pi/180)^2+((tan(VZA_sat*pi/180)-tan(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180))/(tan(SZA_sat*pi/180)*sin(rel_azimuth_sat*pi/180)))^2))*180/pi ) |>
+    tidytable::mutate(PI_hyp = acos(abs(tan(VZA_hyp*pi/180))/sqrt(1+tan(VZA_hyp*pi/180)^2+((tan(VZA_hyp*pi/180)-tan(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180))/(tan(SZA_hyp*pi/180)*sin(rel_azimuth_hyp*pi/180)))^2))*180/pi ) |>
+    # tidytable::group_by(time_hyp, VZA_hyp, VAA_hyp) |>
+    tidytable::mutate(SE_sat = 90-SZA_sat) |>
+    tidytable::mutate(SE_hyp = 90-SZA_hyp) |>
+    tidytable::mutate(RA_diff = abs(RA_sat-RA_hyp)) |>
+    tidytable::mutate(PI_diff = abs(PI_sat-PI_hyp)) |>
+    tidytable::mutate(SE_diff = abs(SE_sat-SE_hyp)) |>
+    tidytable::rowwise() |>
+    tidytable::mutate(average_RA_PI_diff = 0.5*(RA_diff+PI_diff)) |>
+    tidytable::mutate(average_RE_PI_SE_diff = (RA_diff+PI_diff+SE_diff)/3) |>
     tidytable::ungroup()
-  
+    
   filter_best_config <- compute_best_config |>
     tidytable::group_by(date) |>
-    tidytable::mutate(best_geometry = rel_angle_diff == min(rel_angle_diff)) |>
+    tidytable::mutate(best_geometry_1 = RA_diff == min(RA_diff)) |>
+    tidytable::mutate(best_geometry_2 = average_RA_PI_diff == min(average_RA_PI_diff)) |>
+    tidytable::mutate(best_geometry_3 = average_RE_PI_SE_diff == min(average_RE_PI_SE_diff)) |>
     tidytable::ungroup() |>
     tidytable::mutate(operations = ":elemental:elemental:elemental:elemental")
     
   return(filter_best_config)
   
-  #la divisione in rel_angle_diff e plane_inclination è motivata dalla seguente considerazione
+  #la divisione in relative_angle e plane_inclination è motivata dalla seguente considerazione
   #
-  #rel_angle_diff riguarda (principalmente) la microstruttura: 
+  #RA_diff riguarda (principalmente) la microstruttura: 
   #in base alla geometria di diffusione della singola particella, guardare con lo stesso angolo 
   #relativo mostra lo stesso spettro di riflessione. 
   #Non è possibile escludere del tutto la macrostruttura a causa delle riflessioni multiple nel 
@@ -954,6 +1074,10 @@ elemental_matchup <- function(date_output){
   #del target, ovvero di come le particelle si aggregano nel target. La singola particella infatti non 
   #può distinguere il piano di inclinazione dei raggi pertanto la microstruttura cambiando 
   #il piano di inclinazione dei raggi non può essere analizzata
+  #
+  #è stata aggiunta anche l'elevazione solare che sarebbe l'angolo di ingresso 
+  #della luce sul target. Anche questo per un target disomogeneo influenza la
+  #possibilità di riflessione
   
 }
 
@@ -1488,7 +1612,11 @@ plot_ribbon <- function(matchup_result,
       geom_ribbon(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, fill = color_station) +
       ggtitle(title) +
       ylab("R [-]") +
-      xlab("Wavelength [nm]") 
+      ylim(0,0.6)+#limits for what we saw in the fields
+      xlim(300,1700)+#limits for hypstar range
+      xlab("Wavelength [nm]") +
+      theme_bw(base_size = 15) +
+      theme(plot.title = element_text(size=11))
     
     if(!is.null(limits)){
       plot <- plot + ylim(limits)
@@ -1500,7 +1628,7 @@ plot_ribbon <- function(matchup_result,
     
     save_path <- paste0(output_directory, filename,".png")
     
-    ggsave(plot = plot, filename = save_path, height = 3.5, width = 14)
+    ggsave(plot = plot, filename = save_path, height = 3.5, width = 10)
     
     return(plot)
   }
@@ -1562,7 +1690,10 @@ plot_rainbow <- function(matchup_result,
                   alpha = 0.4,
                   linetype = "dashed")+
       xlab("Hypstar R [-]")+
-      theme(aspect.ratio = 1)
+      ylim(0,0.6) +
+      xlim(0,0.6) +
+      theme_bw(base_size = 15)+
+      theme(aspect.ratio = 1, plot.title = element_text(size=11))
     
     if(is.null(filename)){
       filename <- paste0("rainbow_",title)
@@ -1612,12 +1743,16 @@ plot_relative_errors <- function(matchup_result,
                   intercept = 0,
                   linetype = "dashed") +
       ggtitle(title)+
+      ylim(-60,60)+
+      xlim(300,1700)+#limits for hypstar range
       geom_point(mapping = aes(x = wvl, y = relative_error, color = relative_error), size = point_size)+
       scale_color_gradient2('Relative error (%)',      # titolo della legenda
                             low = 'red', mid = 'darkgreen', high = 'red',
                             midpoint = 0)+
       ylab("Relative error (%)")+
-      xlab("wavelengths [nm]")
+      xlab("Wavelengths [nm]")+
+      theme_bw(base_size = 15)+
+      theme(plot.title = element_text(size=11))
     
     if(is.null(filename)){
       filename <- paste0("relative_error_",title)
@@ -1753,11 +1888,14 @@ plot_polar_for_elemental <- function(geometry_output,
     tidytable::mutate(rmse = Metrics::rmse(Ref_hyp,Ref_sat)) |>
     tidytable::ungroup() |>
     tidytable::filter(bands == bands[[1]]) |> #having multiple bands is redundant after computing rmse
-    tidytable::mutate(point_number = tidytable::row_number()) |>
-    tidytable::mutate(average_diff = 0.5*(rel_angle_diff+plane_inclination_diff)) 
+    tidytable::mutate(point_number = tidytable::row_number()) 
   
   library(ggplot2)
   plot <- ggplot() +
+    geom_point(data = geom_coord, aes(x = VAA_hyp, y = VZA_hyp, color = rmse),
+               size = 3) +
+    geom_text(data = geom_coord, aes(x = VAA_hyp, y = VZA_hyp, label = point_number),
+              size = 5, hjust = 0, vjust = 0) +
     geom_text(data = geom_coord, aes(x = SAA_sat, y = SZA_sat),
               color = "darkgrey",
               size = 5,
@@ -1773,47 +1911,56 @@ plot_polar_for_elemental <- function(geometry_output,
               color = "darkgrey",
               size = 5,
               label = "X") +
-    geom_point(data = geom_coord, aes(x = VAA_hyp, y = VZA_hyp, color = rmse),
-               size = 3) +
-    geom_text(data = geom_coord, aes(x = VAA_hyp, y = VZA_hyp, label = point_number),
-              size = 3, hjust = 0, vjust = 0) +
     coord_radial(theta = "x", start = -pi*15/180, thetalim = c(0,330), inner.radius = 0.1,
                  r.axis.inside = T) +
     ylab("VZA [rad]") +
     xlab("VAA [rad]") +
     scale_color_gradient("rmse",
-      low = "green", high = "red")+
+      low = "green", high = "red", limits = c(0,0.3))+
     scale_x_continuous(
       limits = c(0, 360),
       breaks = seq(0, 330, by = 30),
       minor_breaks = NULL
     )+
-    theme_bw()+
-    ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots_elemental(geom_coord),"_VZA_sat_",round(unique(geom_coord$VZA_sat),0),"_VAA_sat_",round(unique(geom_coord$VAA_sat),0),"_rel_angle_sat_",round(unique(geom_coord$rel_angle_sat),0),"_plane_inc_sat_",round(unique(geom_coord$plane_inclination_sat),0)))
+    theme_bw(base_size = 15)+
+    theme(plot.subtitle = element_text(size=11))+
+    ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots_elemental(geom_coord),"_VZA_sat_",round(unique(geom_coord$VZA_sat),0),"_VAA_sat_",round(unique(geom_coord$VAA_sat),0),"_RA_sat_",round(unique(geom_coord$RA_sat),0),"_plane_inc_sat_",round(unique(geom_coord$PI_sat),0)))
   
-  table <- geom_coord |> tidytable::select(rmse, rel_angle_hyp, rel_angle_diff, plane_inclination_hyp, plane_inclination_diff, average_diff) |> 
+  table <- geom_coord |> tidytable::select(RA_hyp, RA_diff, 
+                                           PI_hyp, PI_diff, 
+                                           SE_hyp, SE_diff,
+                                           average_RA_PI_diff, average_RE_PI_SE_diff,
+                                           rmse) |> 
     tidytable::mutate(tidytable::across(.cols = everything(), ~round(.x,2)))
   
   table_to_plot <- ggpubr::table_cell_font(
     ggpubr::table_cell_font(
-    ggpubr::table_cell_font(tab = ggpubr::ggtexttable(table), row = 1, column = 7, color = "#0000FF"),
-    row = 1, column = 4, color = "#B300FF"),
-    row = 1, column = 2, color = "brown")
+    ggpubr::table_cell_font(tab = ggpubr::ggtexttable(table), row = 1, column = 9, color = "#0000FF"),
+    row = 1, column = 3, color = "#B300FF"),
+    row = 1, column = 8, color = "brown")
     
-  if(sum(geom_coord$best_geometry) == 1){
-    best_config <- geom_coord |> tidytable::filter(best_geometry) |> unique()
-    best_metric <- geom_coord |> tidytable::filter(rmse == min(rmse)) |> unique() 
-    best_config2 <- geom_coord |> tidytable::filter(average_diff == min(average_diff)) |> unique()
+  if(sum(geom_coord$best_geometry_1) == 1){
     plot <- plot + 
-      geom_point(data = best_config, aes(x = VAA_hyp, y = VZA_hyp),
+      geom_point(data = geom_coord |> tidytable::filter(best_geometry_1) |> tidytable::select(VAA_hyp,VZA_hyp) |> unique(),
+                 aes(x = VAA_hyp, y = VZA_hyp),
                  color = "#B300FF",
-                 size = 10,
-                 shape = 1) + 
-      geom_point(data = best_metric, aes(x = VAA_hyp, y = VZA_hyp),
-                 color = "brown",
                  size = 5,
-                 shape = 1) +
-      geom_point(data = best_config2, aes(x = VAA_hyp, y = VZA_hyp),
+                 shape = 1) 
+  }
+  
+  if(sum(geom_coord$best_geometry_2) == 1){
+    plot <- plot + 
+      geom_point(data = geom_coord |> tidytable::filter(best_geometry_2) |> tidytable::select(VAA_hyp,VZA_hyp) |> unique(), 
+                 aes(x = VAA_hyp, y = VZA_hyp),
+                 color = "brown",
+                 size = 10,
+                 shape = 1)
+  }
+  
+  if(sum(geom_coord$best_geometry_3) == 1){
+    plot <- plot + 
+      geom_point(data = geom_coord |> tidytable::filter(best_geometry_3) |> tidytable::select(VAA_hyp,VZA_hyp) |> unique(), 
+                 aes(x = VAA_hyp, y = VZA_hyp),
                  color = "#0000FF",
                  size = 15,
                  shape = 1)
@@ -1949,6 +2096,7 @@ create_summary <- function(date_start,
                          date_end = date_end)
   
   if(!is.null(s2_data) & !is.null(hypstar_data)){
+    print("Start matchups with S2 data")
     matchup_result_to_S2_v2 <- matchup_function_v2(sat_data = s2_data,
                                                    hypstar_data = hypstar_data,
                                                    delVZA = c(0),
@@ -1971,6 +2119,7 @@ create_summary <- function(date_start,
                                  repo_root_path = repo_root_path_prs)
   
   if(!is.null(PRISMA_data)  & !is.null(hypstar_data)){
+    print("Start matchups with PRISMA data")
     matchup_result_to_PRISMA_v2 <- matchup_function_v2(sat_data = PRISMA_data,
                                                        hypstar_data = hypstar_data,
                                                        delVZA = c(0),
@@ -1992,6 +2141,7 @@ create_summary <- function(date_start,
                                date_end = date_end)
   
   if(!is.null(EnMAP_data)  & !is.null(hypstar_data)){
+    print("Start matchups with EnMAP data")
     matchup_result_to_EnMAP_v2 <- matchup_function_v2(sat_data = EnMAP_data,
                                                       hypstar_data = hypstar_data,
                                                       delVZA = c(0),

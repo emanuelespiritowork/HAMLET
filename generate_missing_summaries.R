@@ -1,6 +1,7 @@
 #generate_missing_summaries.R
 source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
-
+mirai::daemons(0)
+mirai::daemons(8)
 #choose output summary folder
 output_summary_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/summary/"
 
