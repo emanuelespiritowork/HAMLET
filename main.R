@@ -11,9 +11,11 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 # date_start <- "2024-11-12"
 # date_end <- "2024-11-14"
 # date_start <- "2025-04-20"
+# date_end <- "2025-04-23"
+# date_start <- "2025-04-21"
 # date_end <- "2025-04-30"
-date_start <- "2025-04-21"
-date_end <- "2025-04-30"
+date_start <- "2025-03-01"
+date_end <- "2025-06-30"
 # repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" 
 #or 
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2"
@@ -35,32 +37,48 @@ mirai::daemons(8)
 
 #get hypstar data
 hypstar_data <- get_hypstar_data(date_start = date_start, 
-                                 date_end = date_end)
+                                 date_end = date_end,
+                                 level = "L2B")
 
 #get s2 data 
 s2_data <- get_s2_data(date_start = date_start,
                        date_end = date_end)
 
-#matchup to S2
-
+#matchup to S2 con tutti gli angoli tranne zero
 matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
-                 hypstar_data = hypstar_data,
-                 time_or_sun_angle = T,
-                 just_closest_time_or_sun_angle = T,
-                 just_closest_view_angle = F,
-                 range_view_angle = 360,
-                 delVZA = c(0),
-                 weighted_mean = F,
-                 print_polar = F)
+                                         hypstar_data = hypstar_data,
+                                         time_or_sun_angle = T,
+                                         just_closest_time_or_sun_angle = T,
+                                         just_closest_view_angle = F,
+                                         range_view_angle = 360,
+                                         delVZA = c(0),
+                                         weighted_mean = F,
+                                         print_polar = F)
 
 plot <- plot_ribbon(matchup_result_to_S2)
 plot <- plot_rainbow(matchup_result_to_S2)
 plot <- plot_relative_errors(matchup_result_to_S2)
 
+#matchup to S2 con tutti gli angoli tranne zero, 5 e 30
+matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
+                                         hypstar_data = hypstar_data,
+                                         time_or_sun_angle = T,
+                                         just_closest_time_or_sun_angle = T,
+                                         just_closest_view_angle = F,
+                                         range_view_angle = 360,
+                                         delVZA = c(0,5,30),
+                                         weighted_mean = F,
+                                         print_polar = F)
+
+plot <- plot_ribbon(matchup_result_to_S2)
+plot <- plot_rainbow(matchup_result_to_S2)
+plot <- plot_relative_errors(matchup_result_to_S2)
+
+#matchup elementale
 matchup_result_to_S2_v2 <- matchup_function_v2(sat_data = s2_data,
-                    hypstar_data = hypstar_data,
-                    delVZA = c(0),
-                    print_polar = T)
+                                               hypstar_data = hypstar_data,
+                                               delVZA = c(0),
+                                               print_polar = T)
 
 plot <- plot_ribbon(matchup_result_to_S2_v2[[1]])
 plot <- plot_rainbow(matchup_result_to_S2_v2[[1]])

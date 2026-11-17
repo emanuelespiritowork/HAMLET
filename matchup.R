@@ -25,8 +25,12 @@ search_for_already_downloaded <- function(date_start,
       tidytable::mutate(date_diff = end_date - start_date) |>
       tidytable::arrange(date_diff)
     
-    filter_file <- tidytable::fread(dates_file$file_path[[1]]) |> 
-      tidytable::filter(date >= date_start & date <= date_end)
+    if(nrow(dates_file)>0){
+      filter_file <- tidytable::fread(dates_file$file_path[[1]]) |> 
+        tidytable::filter(date >= date_start & date <= date_end)
+    }else{
+      filter_file <- NULL
+    }
   }else{
     filter_file <- NULL
   }
@@ -37,7 +41,9 @@ search_for_already_downloaded <- function(date_start,
 #get_hypstar_data ----
 get_hypstar_data <- function(date_start,
                              date_end,
-                             home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
+                             level,
+                             home_path_l2a = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
+                             home_path_l2b = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED_L2B",
                              bands_HYP = get_bands_station("HYPSTAR_JDS"),
                              filename = NULL,
                              output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
@@ -47,7 +53,7 @@ get_hypstar_data <- function(date_start,
   dates <- search_for_already_downloaded(date_start = date_start,
                                 date_end = date_end,
                                 output_directory = output_directory,
-                                pattern = "hypstar_data_from")
+                                pattern = paste0("hypstar",level,"_data_from"))
   
   if(!is.null(dates)){
     print("Found already extracted file")
@@ -58,20 +64,42 @@ get_hypstar_data <- function(date_start,
     }
   }
   
-  full_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE))
+  if(level == "L2A"){
+    home_path <- home_path_l2a
+    
+    full_list <- data.table::data.table(folder_name = list.dirs(home_path, recursive = FALSE, full.names = FALSE))
+    
+    folder_list  <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
+                                                   time = substr(folder_name, 12, 20)) |>
+      tidytable::filter(date >= date_start,
+                        date <= date_end)
+  }else if(level == "L2B"){
+    home_path <- home_path_l2b
+    
+    folder_list <- data.table::data.table(folder_name = list.files(home_path, recursive = FALSE, full.names = F, pattern = "L2B_REF")) |>
+      tidytable::mutate(date = as.Date(substr(basename(folder_name),26,33),format = "%Y%m%d"),
+                        time = paste0("T",substr(basename(folder_name),35,38),"00")) |>
+      tidytable::filter(date >= date_start,
+                        date <= date_end)
+  }else{
+    stop(paste0("Level ", level, " not found amongst repository levels."))
+  }
   
-  folder_list  <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
-                                               time = substr(folder_name, 12, 20)) |>
-    tidytable::filter(date >= date_start,
-                      date <= date_end)
   
-  hyp_function <- function(row_n, folder_list, home_path, bands_HYP){
+  hyp_function <- function(row_n, folder_list, home_path, bands_HYP, level){
     folder_name <- folder_list$folder_name[row_n]
     date <- folder_list$date[row_n] 
     time <- folder_list$time[row_n] 
     
-    file_list <- list.files(paste0(home_path, "/", folder_name), pattern = "L2A_REF", 
-                            full.names = TRUE)
+    if(level == "L2A"){
+      file_list <- list.files(paste0(home_path, "/", folder_name), pattern = "L2A_REF", 
+                              full.names = TRUE)
+    }else if(level == "L2B"){
+      file_list <- paste0(home_path,"/",folder_name)
+    }else{
+     stop("NAN") 
+    }
+    
     
     if (length(file_list) == 0) {
       return(NULL)
@@ -93,6 +121,13 @@ get_hypstar_data <- function(date_start,
     hyp_fwhm <- ncdf4::ncvar_get(ncin, "bandwidth")
     hyp_series_id <- ncdf4::ncvar_get(ncin, "series_id")
     
+    if(is.na(ncol(hyp_ref))){
+      hyp_ref <- data.table::data.table(hyp_ref) |> t()
+      hyp_std <- data.table::data.table(hyp_std) |> t()
+      hyp_u_rel_random <- data.table::data.table(hyp_u_rel_random) |> t()
+      hyp_u_rel_systematic <- data.table::data.table(hyp_u_rel_systematic) |> t()
+    }
+    
     complete_ref <- data.table::data.table(date = date,
                                            time = time,
                                            VZA = hyp_vza,
@@ -101,7 +136,7 @@ get_hypstar_data <- function(date_start,
                                            SZA = hyp_sza,
                                            SAA = hyp_saa) |>
       tidytable::bind_cols(hyp_ref |> 
-                             data.table::data.table() |> 
+                             data.table::data.table() |>
                              `names<-`(paste0("B", 1:1554)) ) |>
       tidytable::mutate(tidytable::across(c(VZA, VAA, PAA, SZA, SAA), ~round(.x)))
     
@@ -189,11 +224,12 @@ get_hypstar_data <- function(date_start,
   
   # print("start_reading")
   
-  res <- mirai::mirai_map(1:nrow(folder_list), function(x){return(hyp_function(x,folder_list,home_path,bands_HYP))}, 
+  res <- mirai::mirai_map(1:nrow(folder_list), function(x){return(hyp_function(x,folder_list,home_path,bands_HYP,level))}, 
                           hyp_function = hyp_function, 
                           folder_list = folder_list, 
                           home_path = home_path, 
                           bands_HYP = bands_HYP,
+                          level = level,
                           pivoting_longer_function = pivoting_longer_function)[] |> tidytable::bind_rows() 
   
   # max value @ 836 nm < 6000
@@ -203,7 +239,8 @@ get_hypstar_data <- function(date_start,
     tidytable::mutate(max_validate_B1000 = max(validate_B1000)) |>
     tidytable::ungroup() |>
     tidytable::filter(max_validate_B1000 < 0) |>
-    tidytable::select(-max_validate_B1000,-validate_B1000)
+    tidytable::select(-max_validate_B1000,-validate_B1000) |>
+    tidytable::mutate(level = level)
   
   #scale data
   # scaled <- filtered |> mutate(Ref = Ref/10000, std = std/10000,
@@ -218,7 +255,7 @@ get_hypstar_data <- function(date_start,
     tidytable::mutate(hyp_sensor = "JSIT")
   
   if(is.null(filename)){
-    save_function(output, paste0("hypstar_data_from_", date_start, "_to_", date_end, ".csv"), output_directory)
+    save_function(output, paste0("hypstar", level,"_data_from_", date_start, "_to_", date_end, ".csv"), output_directory)
   }else{
     save_function(output, filename, output_directory)
   }
@@ -875,7 +912,8 @@ matchup_function <- function(sat_data,
   #DATE PROBLEM
   date_output <- date_function(sat_col_renamed = sat_col_renamed,
                                hypstar_col_renamed = hypstar_col_renamed,
-                               only_same_date = only_same_date)
+                               only_same_date = only_same_date) |>
+    check_data_types()
   
   #SUN TIME OR SUN ANGLE PROBLEM
   
@@ -895,31 +933,35 @@ matchup_function <- function(sat_data,
   view_angle_output <- view_angle_function(time_or_sun_angle_output = time_or_sun_angle_output,
                                            range_view_angle = range_view_angle,
                                            just_closest_view_angle = just_closest_view_angle,
-                                           weighted_mean = weighted_mean) 
+                                           weighted_mean = weighted_mean) |>
+    tidytable::mutate(delVZA = paste(delVZA,collapse = "_")) |>
+    tidytable::mutate(delVAA = paste(delVAA,collapse = "_"))
   
   #save
   if(!is.null(filename)){
     save_function(view_angle_output, filename, output_directory)
   }else{
-    save_function(view_angle_output, paste0(sat_sensor,"_matchups_from_",min(sat_data$date),"_to_",max(sat_data$date),
-                                            "_TIME-or-ANGLE-",
-                                            strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]],"_")[[1]][[1]],
-                                            "_WINDOW-",
-                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]]),
-                                                                error = function(e){return(NULL)})))),
-                                            strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[2]],"_")[[1]])]],
-                                            "_VIEW-",
-                                            strsplit(strsplit(unique(view_angle_output$operations), ":")[[1]][[3]],"_")[[1]][[1]],
-                                            "_WINDOW-",
-                                            invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(view_angle_output$operations), ":")[[1]][[3]]),
-                                                                error = function(e){return(NULL)})))),
-                                            "deg",
-                                            ".csv"), output_directory) 
+    save_function(view_angle_output, make_title_for_csv(view_angle_output), output_directory) 
   }
   
   
   return(view_angle_output)
   
+}
+
+check_data_types <- function(date_output){
+  checked_output <- date_output |>
+    tidytable::mutate(date = as.Date(date)) |>
+    tidytable::mutate(time_hyp = hms::as_hms(time_hyp)) |>
+    tidytable::mutate(time_sat = hms::as_hms(time_sat)) |>
+    tidytable::mutate(VAA_sat = as.numeric(VAA_sat)) |>
+    tidytable::mutate(VZA_sat = as.numeric(VZA_sat)) |>
+    tidytable::mutate(SAA_sat = as.numeric(SAA_sat)) |>
+    tidytable::mutate(SZA_sat = as.numeric(SZA_sat)) |>
+    tidytable::mutate(VAA_hyp = as.numeric(VAA_hyp)) |>
+    tidytable::mutate(SAA_hyp = as.numeric(SAA_hyp)) |>
+    tidytable::mutate(VZA_hyp = as.numeric(VZA_hyp)) |>
+    tidytable::mutate(SZA_hyp = as.numeric(SZA_hyp))
 }
 
 #matchup_function_v2 ----
@@ -977,10 +1019,13 @@ matchup_function_v2 <- function(sat_data,
   #DATE PROBLEM
   date_output <- date_function(sat_col_renamed = sat_col_renamed,
                                hypstar_col_renamed = hypstar_col_renamed,
-                               only_same_date = only_same_date)
+                               only_same_date = only_same_date)|>
+    check_data_types()
   
   #GEOMETRY PROBLEM
-  geometry_output <- elemental_matchup(date_output = date_output)
+  geometry_output <- elemental_matchup(date_output = date_output)  |>
+    tidytable::mutate(delVZA = paste(delVZA,collapse = "_")) |>
+    tidytable::mutate(delVAA = paste(delVAA,collapse = "_"))
   
   selected_geometry <- geometry_output |>
     tidytable::filter(best_geometry_1) |>  
@@ -1004,7 +1049,7 @@ matchup_function_v2 <- function(sat_data,
       unique()
     
     divide_by_time <- function(df,group){
-      return(df |> tidytable::mutate(operations = ":elemental:elemental:elemental:elemental")|>
+      return(df |> #tidytable::mutate(operations = ":elemental:elemental:elemental:elemental")|>
                tidytable::filter(r == group))
     }
     list_of_datasets_per_time <- lapply(groups, divide_by_time, df = order_time_and_date)
@@ -1017,9 +1062,7 @@ matchup_function_v2 <- function(sat_data,
   if(!is.null(filename)){
     save_function(selected_geometry, filename, output_directory)
   }else{
-    save_function(selected_geometry, paste0(sat_sensor,"_matchups_from_",min(sat_data$date),"_to_",max(sat_data$date),
-                                            "_elemental",
-                                            ".csv"), output_directory) 
+    save_function(selected_geometry, make_title_for_csv(selected_geometry), output_directory) 
   }
   
   return(list(selected_geometry,list_of_polar_plots))
@@ -1587,7 +1630,8 @@ plot_ribbon <- function(matchup_result,
                          alpha = .3,
                         output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                         filename = NULL,
-                        limits = NULL){
+                        ylimits = c(0,0.6),
+                        xlimits = c(300,1700)){
   # library(ggplot2)
   
   sat_name <- unique(substr(matchup_result$sensor,1,2))
@@ -1602,7 +1646,7 @@ plot_ribbon <- function(matchup_result,
     sat_color <- color_sat_S2
   }
   
-  plot_function <- function(date_sel, limits, matchup_result, output_directory, filename, sat_color, alpha,color_station){
+  plot_function <- function(date_sel, ylimits, xlimits, matchup_result, output_directory, filename, sat_color, alpha,color_station){
     data_plot <- matchup_result |> tidytable::filter(date == date_sel) 
     title <- make_title_for_matchup_plots(data_plot)
     plot <- ggplot(data = data_plot) + 
@@ -1612,14 +1656,18 @@ plot_ribbon <- function(matchup_result,
       geom_ribbon(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, fill = color_station) +
       ggtitle(title) +
       ylab("R [-]") +
-      ylim(0,0.6)+#limits for what we saw in the fields
-      xlim(300,1700)+#limits for hypstar range
+      # ylim(0,0.6)+#limits for what we saw in the fields
+      # xlim(300,1700)+#limits for hypstar range
       xlab("Wavelength [nm]") +
       theme_bw(base_size = 15) +
       theme(plot.title = element_text(size=11))
     
-    if(!is.null(limits)){
-      plot <- plot + ylim(limits)
+    if(!is.null(ylimits)){
+      plot <- plot + ylim(ylimits)
+    }
+    
+    if(!is.null(xlimits)){
+      plot <- plot + xlim(xlimits)
     }
     
     if(is.null(filename)){
@@ -1639,7 +1687,8 @@ plot_ribbon <- function(matchup_result,
   
   val <- mirai::mirai_map(unique(matchup_result$date),
                    function(x){return(plot_function(x,
-                                                    limits,
+                                                    ylimits,
+                                                    xlimits,
                                                     matchup_result,
                                                     output_directory,
                                                     filename,
@@ -1647,7 +1696,8 @@ plot_ribbon <- function(matchup_result,
                                                     alpha,
                                                     color_station))},
                    plot_function = plot_function,
-                   limits = limits,
+                   ylimits = ylimits,
+                   xlimits = xlimits,
                    matchup_result = matchup_result,
                    output_directory = output_directory,
                    filename = filename,
@@ -1663,6 +1713,8 @@ plot_ribbon <- function(matchup_result,
 plot_rainbow <- function(matchup_result,
                          point_size = 3,
                          output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
+                         xlimits = c(0,0.6),
+                         ylimits = c(0,0.6),
                          filename = NULL){
   # library(ggplot2)
   palette <- c(rev(rainbow(8)[-length(rainbow(8))]),"#bbbbbb","#777777","#444444","#000000")
@@ -1690,14 +1742,25 @@ plot_rainbow <- function(matchup_result,
                   alpha = 0.4,
                   linetype = "dashed")+
       xlab("Hypstar R [-]")+
-      ylim(0,0.6) +
-      xlim(0,0.6) +
+      # ylim(0,0.6) +
+      # xlim(0,0.6) +
       theme_bw(base_size = 15)+
       theme(aspect.ratio = 1, plot.title = element_text(size=11))
     
     if(is.null(filename)){
       filename <- paste0("rainbow_",title)
     }
+    
+    if(is.null(xlimits)){
+      plot <- plot +
+        xlim(xlimits)
+    }
+    
+    if(is.null(ylimits)){
+      plot <- plot +
+        ylim(ylimits)
+    }
+    
     save_path <- paste0(output_directory, filename,".png")
     
     ggsave(plot = plot, filename = save_path, height = 5, width = 13)
@@ -1727,7 +1790,8 @@ plot_rainbow <- function(matchup_result,
 #plot_relative_errors ----
 plot_relative_errors <- function(matchup_result,
                                  point_size = 3,
-                                 
+                                 ylimits = c(-60,60),
+                                 xlimits = c(300,1700),
                                  output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                                  filename = NULL){
   relative_error_df <- matchup_result |> tidytable::mutate(relative_error = (Ref_sat-Ref_hyp)/ Ref_hyp *100) 
@@ -1743,8 +1807,8 @@ plot_relative_errors <- function(matchup_result,
                   intercept = 0,
                   linetype = "dashed") +
       ggtitle(title)+
-      ylim(-60,60)+
-      xlim(300,1700)+#limits for hypstar range
+      # ylim(-60,60)+
+      # xlim(300,1700)+#limits for hypstar range
       geom_point(mapping = aes(x = wvl, y = relative_error, color = relative_error), size = point_size)+
       scale_color_gradient2('Relative error (%)',      # titolo della legenda
                             low = 'red', mid = 'darkgreen', high = 'red',
@@ -1756,6 +1820,16 @@ plot_relative_errors <- function(matchup_result,
     
     if(is.null(filename)){
       filename <- paste0("relative_error_",title)
+    }
+    
+    if(is.null(xlimits)){
+      plot <- plot +
+        xlim(xlimits)
+    }
+    
+    if(is.null(ylimits)){
+      plot <- plot +
+        ylim(ylimits)
     }
     
     save_path <- paste0(output_directory, filename,".png")
@@ -2022,32 +2096,67 @@ make_title_for_polar_plots_elemental <- function(time_or_sun_angle_output){
   return(title)
 }
 
+#make_title_for_csv ----
+make_title_for_csv <- function(matchup_result){
+  if(strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[1]] == "elemental"){
+    title <- paste0(unique(substr(matchup_result$sensor,1,2)),"_matchups_",
+                    "HYP",unique(matchup_result$level),
+                    "_from_",min(matchup_result$date),
+                    "_to_",max(matchup_result$date),
+                    "_bestconfig",
+                    "_delVZA_",unique(matchup_result$delVZA),
+                    "_delVAA_",unique(matchup_result$delVAA),
+                    ".csv")
+  }else{
+    title <- paste0(unique(substr(matchup_result$sensor,1,2)),"_matchups_",
+                    "HYP",unique(matchup_result$level),
+                    "_from_",min(matchup_result$date),
+                    "_to_",max(matchup_result$date),
+                    "_TIME-or-ANGLE-",
+                    strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[1]],
+                    "_WINDOW-",
+                    invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[2]]),
+                                                                   error = function(e){return(NULL)})))),
+                    strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[length(strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]])]],
+                    "_VIEW-",
+                    strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[3]],"_")[[1]][[1]],
+                    "_WINDOW-",
+                    invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[3]]),
+                                                                   error = function(e){return(NULL)})))),
+                    "deg",
+                    "_delVZA_",unique(matchup_result$delVZA),
+                    "_delVAA_",unique(matchup_result$delVAA),
+                    ".csv")
+  }
+  
+  return(title)
+}
+
 #make_title_for_matchup_plots ----
 make_title_for_matchup_plots <- function(matchup_result){
-  
   if(strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[1]] == "elemental"){
     title = paste0("SAT-",unique(substr(matchup_result$sensor,1,2)),
-                   "_HYP-",
+                   "_HYP",unique(matchup_result$level),"-",
                    unique(substr(matchup_result$hyp_sensor,1,4)),
                    "_DT-", 
                    gsub("-","",unique(matchup_result$date)),
                    "T",
-                   gsub(":","",unique(matchup_result$time_sat)),
-                   "_HYPTIME_",
-                   gsub(":","",unique(matchup_result$time_hyp)),
-                   "_HYPVZA_",
-                   gsub(":","",unique(matchup_result$VZA_hyp)),
-                   "_HYPVAA_",
-                   gsub(":","",unique(matchup_result$VAA_hyp))
+                   gsub(":","",unique(as.character(hms::as_hms(matchup_result$time_sat)))),
+                   "_bestconfig",
+                   "_HYPTIME_", gsub(":","",unique(matchup_result$time_hyp)),
+                   "_HYPVZA_", unique(matchup_result$VZA_hyp),
+                   "_HYPVAA_", unique(matchup_result$VAA_hyp),
+                   "_delVAA_", unique(matchup_result$delVAA),
+                   "_delVZA_", unique(matchup_result$delVZA)
     )
   }else{
     title = paste0("SAT-",unique(substr(matchup_result$sensor,1,2)),
-                   "_HYP-",
+                   "_HYP",unique(matchup_result$level),"-",
                    unique(substr(matchup_result$hyp_sensor,1,4)),
                    "_DT-", 
                    gsub("-","",unique(matchup_result$date)),
                    "T",
-                   gsub(":","",unique(matchup_result$time_sat)),
+                   gsub(":","",as.character(unique(matchup_result$time_sat))),
                    "_TIME-or-ANGLE-",
                    strsplit(strsplit(unique(matchup_result$operations), ":")[[1]][[2]],"_")[[1]][[1]],
                    "_WINDOW-",
@@ -2059,7 +2168,9 @@ make_title_for_matchup_plots <- function(matchup_result){
                    "_WINDOW-",
                    invisible(suppressWarnings(as.numeric(tryCatch(readr::parse_number(strsplit(unique(matchup_result$operations), ":")[[1]][[3]]),
                                                                   error = function(e){return(NULL)})))),
-                   "deg"
+                   "deg",
+                   "_delVAA_", unique(matchup_result$delVAA),
+                   "_delVZA_", unique(matchup_result$delVZA)
     )
   }
   
