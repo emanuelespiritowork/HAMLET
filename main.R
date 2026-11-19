@@ -55,9 +55,9 @@ matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
                                          weighted_mean = F,
                                          print_polar = F)
 
-plot <- plot_ribbon(matchup_result_to_S2)
-plot <- plot_rainbow(matchup_result_to_S2)
-plot <- plot_relative_errors(matchup_result_to_S2)
+plot <- plot_ribbon(matchup_result_to_S2, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
+plot <- plot_rainbow(matchup_result_to_S2, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
+plot <- plot_relative_errors(matchup_result_to_S2, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
 
 #matchup to S2 con tutti gli angoli tranne zero, 5 e 30
 matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
@@ -106,40 +106,31 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              time_or_sun_angle = T,
                                              just_closest_time_or_sun_angle = T,
                                              just_closest_view_angle = F,
-                                             range_view_angle = 30,
-                                             delVZA = c(0),
-                                             weighted_mean = F,
-                                             print_polar = T)
-
-plot <- plot_ribbon(matchup_result_to_PRISMA)
-plot <- plot_rainbow(matchup_result_to_PRISMA)
-plot <- plot_relative_errors(matchup_result_to_PRISMA)
-
-matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
-                                             hypstar_data = hypstar_data,
-                                             time_or_sun_angle = T,
-                                             just_closest_time_or_sun_angle = F,
-                                             range_time_or_sun_angle = 2,
-                                             just_closest_view_angle = F,
                                              range_view_angle = 360,
                                              delVZA = c(0),
                                              weighted_mean = F,
-                                             print_polar = T)
+                                             print_polar = T, 
+                                             height_polar_plot = 9,
+                                             width_polar_plot = 10,
+                                             plot_font_size_polar_plot = 13,
+                                             title_font_size_polar_plot = 8,
+                                             point_size_polar_plot = 3)
 
-plot <- plot_ribbon(matchup_result_to_PRISMA)
-plot <- plot_rainbow(matchup_result_to_PRISMA)
-plot <- plot_relative_errors(matchup_result_to_PRISMA)
+plot <- plot_ribbon(matchup_result_to_PRISMA, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
+plot <- plot_rainbow(matchup_result_to_PRISMA, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
+plot <- plot_relative_errors(matchup_result_to_PRISMA, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
 
+#matchup to PRISMA
 matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              hypstar_data = hypstar_data,
-                                                     time_or_sun_angle = T,
-                                                     just_closest_time_or_sun_angle = T,
-                                                     range_time_or_sun_angle = NULL,
-                                                     just_closest_view_angle = F,
-                                                     range_view_angle = 30,
-                                                     delVZA = c(0),
+                                             time_or_sun_angle = T,
+                                             just_closest_time_or_sun_angle = T,
+                                             just_closest_view_angle = F,
+                                             range_view_angle = 360,
+                                             delVZA = c(0,5,30),
                                              weighted_mean = F,
-                                             print_polar = T)
+                                             print_polar = F)
+
 plot <- plot_ribbon(matchup_result_to_PRISMA)
 plot <- plot_rainbow(matchup_result_to_PRISMA)
 plot <- plot_relative_errors(matchup_result_to_PRISMA)
@@ -161,26 +152,33 @@ plot <- plot_relative_errors(matchup_result_to_EnMAP_v2[[1]])
 #matchup to EnMAP
 matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                             hypstar_data = hypstar_data,
-                                                     time_or_sun_angle = T,
-                                                     just_closest_time_or_sun_angle = T,
-                                                     range_time_or_sun_angle = NULL,
-                                                     just_closest_view_angle = F,
-                                                     range_view_angle = 360,
-                                                     delVZA = c(0),
-                                            print_polar = T)
+                                            time_or_sun_angle = T,
+                                            just_closest_time_or_sun_angle = T,
+                                            just_closest_view_angle = F,
+                                            range_view_angle = 360,
+                                            delVZA = c(0),
+                                            weighted_mean = F,
+                                            print_polar = T,
+                                            height_polar_plot = 9,
+                                            width_polar_plot = 10,
+                                            plot_font_size_polar_plot = 13,
+                                            title_font_size_polar_plot = 8,
+                                            point_size_polar_plot = 3)
 
-plot <- plot_ribbon(matchup_result_to_EnMAP)
-plot <- plot_rainbow(matchup_result_to_EnMAP)
-plot <- plot_relative_errors(matchup_result_to_EnMAP)
+plot <- plot_ribbon(matchup_result_to_EnMAP, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
+plot <- plot_rainbow(matchup_result_to_EnMAP, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
+plot <- plot_relative_errors(matchup_result_to_EnMAP, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
 
+#matchup to EnMAP
 matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                             hypstar_data = hypstar_data,
-                                                     time_or_sun_angle = T,
-                                                     just_closest_time_or_sun_angle = T,
-                                                     range_time_or_sun_angle = NULL,
-                                                     just_closest_view_angle = F,
-                                                     range_view_angle = 30,
-                                                     delVZA = c(0))
+                                            time_or_sun_angle = T,
+                                            just_closest_time_or_sun_angle = T,
+                                            just_closest_view_angle = F,
+                                            range_view_angle = 360,
+                                            delVZA = c(0,5,30),
+                                            weighted_mean = F,
+                                            print_polar = F)
 
 plot <- plot_ribbon(matchup_result_to_EnMAP)
 plot <- plot_rainbow(matchup_result_to_EnMAP)

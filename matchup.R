@@ -863,7 +863,12 @@ matchup_function <- function(sat_data,
                              output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/", #where to save output of matchup (and polar plot)
                              # bands_HYP = get_bands_station("HYPSTAR_JDS"), #bands of Hypstar station
                              print_polar = F, # if we want to save in the output_directory a polar plot (T) or not (F)
-                             weighted_mean = F #if we want a weighted mean (T) or a simple mean (F)
+                             weighted_mean = F, #if we want a weighted mean (T) or a simple mean (F)
+                             width_polar_plot = 10,
+                             height_polar_plot = 9,
+                             plot_font_size_polar_plot = 18,
+                             title_font_size_polar_plot = 14,
+                             point_size_polar_plot = 3
 ){
   
   #to remove specific sensor view angles
@@ -924,9 +929,25 @@ matchup_function <- function(sat_data,
                                                          weighted_mean = weighted_mean)
   
   if(print_polar){
-    plot_divide_by_date(plot_polar, dataset = time_or_sun_angle_output)
-    # plot_polar(time_or_sun_angle_output = time_or_sun_angle_output,
-    #            output_directory = gsub("csv","plots", output_directory))
+    order_time_and_date <- time_or_sun_angle_output |>
+      tidytable::mutate(r = tidytable::row_number()) |>
+      tidytable::group_by(date, time_hyp) |>
+      tidytable::mutate(r = min(r)) 
+    
+    groups <- order_time_and_date |>
+      tidytable::pull(r) |>
+      unique()
+    
+    divide_by_time <- function(df,group){
+      return(df |> #tidytable::mutate(operations = ":elemental:elemental:elemental:elemental")|>
+               tidytable::filter(r == group))
+    }
+    list_of_datasets_per_time <- lapply(groups, divide_by_time, df = order_time_and_date)
+    list_of_polar_plots <- lapply(list_of_datasets_per_time, plot_polar, width = width_polar_plot, height = height_polar_plot,
+                                  plot_font_size = plot_font_size_polar_plot, title_font_size = title_font_size_polar_plot,
+                                  point_size = point_size_polar_plot)
+  }else{
+    list_of_polar_plots = NULL
   }
   
   #VIEW ANGLE PROBLEM
@@ -1034,7 +1055,7 @@ matchup_function_v2 <- function(sat_data,
                                 "PI_sat","PI_hyp",
                                 "PI_diff","SE_diff",
                                 "SE_sat","SE_hyp","average_RA_PI_diff",
-                                "average_RE_PI_SE_diff","best_geometry_1",
+                                "average_RA_PI_SE_diff","best_geometry_1",
                                 "best_geometry_2","best_geometry_3"))) 
   
   #POLAR PLOT
@@ -1081,8 +1102,11 @@ elemental_matchup <- function(date_output){
     tidytable::mutate(RA_hyp = acos( cos(VZA_hyp*pi/180) * cos(SZA_hyp*pi/180) + sin(VZA_hyp*pi/180) * sin(SZA_hyp*pi/180) * cos(rel_azimuth_hyp*pi/180) )*180/pi ) |>
     #using now the dihedral angle https://en.wikipedia.org/wiki/Dihedral_angle
     # plane_inclination = acos(abs(tan(a*pi/180))/sqrt(1+tan(a*pi/180)^2+((tan(a*pi/180)-tan(b*pi/180)*cos(c*pi/180))/(tan(b*pi/180)*sin(c*pi/180)))^2))*180/pi
-    tidytable::mutate(PI_sat = acos(abs(tan(VZA_sat*pi/180))/sqrt(1+tan(VZA_sat*pi/180)^2+((tan(VZA_sat*pi/180)-tan(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180))/(tan(SZA_sat*pi/180)*sin(rel_azimuth_sat*pi/180)))^2))*180/pi ) |>
-    tidytable::mutate(PI_hyp = acos(abs(tan(VZA_hyp*pi/180))/sqrt(1+tan(VZA_hyp*pi/180)^2+((tan(VZA_hyp*pi/180)-tan(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180))/(tan(SZA_hyp*pi/180)*sin(rel_azimuth_hyp*pi/180)))^2))*180/pi ) |>
+    tidytable::mutate(PI_sat = acos(abs((tan(SZA_sat*pi/180)-tan(VZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180))/(tan(VZA_sat*pi/180)*sin(rel_azimuth_sat*pi/180)))/sqrt(1+tan(SZA_sat*pi/180)^2+((tan(SZA_sat*pi/180)-tan(VZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180))/(tan(VZA_sat*pi/180)*sin(rel_azimuth_sat*pi/180)))^2))*180/pi ) |>
+    tidytable::mutate(PI_hyp = acos(abs((tan(SZA_hyp*pi/180)-tan(VZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180))/(tan(VZA_hyp*pi/180)*sin(rel_azimuth_hyp*pi/180)))/sqrt(1+tan(SZA_hyp*pi/180)^2+((tan(SZA_hyp*pi/180)-tan(VZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180))/(tan(VZA_hyp*pi/180)*sin(rel_azimuth_hyp*pi/180)))^2))*180/pi ) |>
+    #vecchio angolo di inclinazione tra il piano di scattering e il piano orizzontale
+    # tidytable::mutate(PI_sat = acos(abs(tan(VZA_sat*pi/180))/sqrt(1+tan(VZA_sat*pi/180)^2+((tan(VZA_sat*pi/180)-tan(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180))/(tan(SZA_sat*pi/180)*sin(rel_azimuth_sat*pi/180)))^2))*180/pi ) |>
+    # tidytable::mutate(PI_hyp = acos(abs(tan(VZA_hyp*pi/180))/sqrt(1+tan(VZA_hyp*pi/180)^2+((tan(VZA_hyp*pi/180)-tan(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180))/(tan(SZA_hyp*pi/180)*sin(rel_azimuth_hyp*pi/180)))^2))*180/pi ) |>
     # tidytable::group_by(time_hyp, VZA_hyp, VAA_hyp) |>
     tidytable::mutate(SE_sat = 90-SZA_sat) |>
     tidytable::mutate(SE_hyp = 90-SZA_hyp) |>
@@ -1091,16 +1115,21 @@ elemental_matchup <- function(date_output){
     tidytable::mutate(SE_diff = abs(SE_sat-SE_hyp)) |>
     tidytable::rowwise() |>
     tidytable::mutate(average_RA_PI_diff = 0.5*(RA_diff+PI_diff)) |>
-    tidytable::mutate(average_RE_PI_SE_diff = (RA_diff+PI_diff+SE_diff)/3) |>
+    tidytable::mutate(average_RA_PI_SE_diff = (RA_diff+PI_diff+SE_diff)/3) |>
     tidytable::ungroup()
     
   filter_best_config <- compute_best_config |>
     tidytable::group_by(date) |>
     tidytable::mutate(best_geometry_1 = RA_diff == min(RA_diff)) |>
     tidytable::mutate(best_geometry_2 = average_RA_PI_diff == min(average_RA_PI_diff)) |>
-    tidytable::mutate(best_geometry_3 = average_RE_PI_SE_diff == min(average_RE_PI_SE_diff)) |>
+    tidytable::mutate(best_geometry_3 = average_RA_PI_SE_diff == min(average_RA_PI_SE_diff)) |>
     tidytable::ungroup() |>
-    tidytable::mutate(operations = ":elemental:elemental:elemental:elemental")
+    tidytable::mutate(operations = ":elemental:elemental:elemental:elemental") |>
+    #in case relative azimuth angle is zero, the configuration is redundant in plane inclination
+    #for three points on a line there are infinite planes. So we cannot use it and it will be false
+    #by default
+    tidytable::mutate(best_geometry_2 = tidytable::if_else(is.na(best_geometry_2),FALSE,best_geometry_2)) |>
+    tidytable::mutate(best_geometry_3 = tidytable::if_else(is.na(best_geometry_3),FALSE,best_geometry_3))
     
   return(filter_best_config)
   
@@ -1630,8 +1659,12 @@ plot_ribbon <- function(matchup_result,
                          alpha = .3,
                         output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                         filename = NULL,
-                        ylimits = c(0,0.6),
-                        xlimits = c(300,1700)){
+                        ylimits = c(0,0.75),
+                        xlimits = c(300,1700),
+                        width = 10,
+                        height = 3.5,
+                        plot_font_size = 15,
+                        title_font_size = 11){
   # library(ggplot2)
   
   sat_name <- unique(substr(matchup_result$sensor,1,2))
@@ -1659,8 +1692,8 @@ plot_ribbon <- function(matchup_result,
       # ylim(0,0.6)+#limits for what we saw in the fields
       # xlim(300,1700)+#limits for hypstar range
       xlab("Wavelength [nm]") +
-      theme_bw(base_size = 15) +
-      theme(plot.title = element_text(size=11))
+      theme_classic(base_size = plot_font_size) +
+      theme(plot.title = element_text(size=title_font_size))
     
     if(!is.null(ylimits)){
       plot <- plot + ylim(ylimits)
@@ -1676,7 +1709,7 @@ plot_ribbon <- function(matchup_result,
     
     save_path <- paste0(output_directory, filename,".png")
     
-    ggsave(plot = plot, filename = save_path, height = 3.5, width = 10)
+    ggsave(plot = plot, filename = save_path, height = height, width = width, units = "cm", dpi = 400)
     
     return(plot)
   }
@@ -1713,20 +1746,25 @@ plot_ribbon <- function(matchup_result,
 plot_rainbow <- function(matchup_result,
                          point_size = 3,
                          output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                         xlimits = c(0,0.6),
-                         ylimits = c(0,0.6),
-                         filename = NULL){
+                         xlimits = c(0,0.75),
+                         ylimits = c(0,0.75),
+                         zlimits = c(300,1700),
+                         filename = NULL,
+                         height = 5,
+                         width = 13,
+                         plot_font_size = 15,
+                         title_font_size = 11){
   # library(ggplot2)
   palette <- c(rev(rainbow(8)[-length(rainbow(8))]),"#bbbbbb","#777777","#444444","#000000")
   values_palette <- scales::rescale(x = c(350,400,450,500,550,600,650,700,1000,1300,1800),
                             to = c(0,1))
   sat_name <- unique(substr(matchup_result$sensor,1,2))
   
-  plot_function <- function(data_sel, matchup_result, point_size, sat_name, values_palette, palette, output_directory, filename){
+  plot_function <- function(data_sel, matchup_result, zlimits, point_size, sat_name, values_palette, palette, output_directory, filename){
     data_plot <- matchup_result |> tidytable::filter(date == data_sel) 
     title <- make_title_for_matchup_plots(data_plot)
     plot <- ggplot() +
-      geom_point(data = data_plot, 
+      geom_point(data = data_plot |> tidytable::filter(tidytable::between(wvl,zlimits[1],zlimits[2])), 
                  mapping = aes(x = Ref_hyp, 
                                y = Ref_sat,
                                color = wvl), 
@@ -1734,7 +1772,7 @@ plot_rainbow <- function(matchup_result,
       scale_color_gradientn(colours = palette,
                             na.value = NA,
                             values = values_palette,
-                            name = "wavelenghts [nm]")+
+                            name = "wvl [nm]")+
       ggtitle(title) +
       ylab(paste0(sat_name," R [-]")) +
       geom_abline(slope = 1,
@@ -1744,26 +1782,27 @@ plot_rainbow <- function(matchup_result,
       xlab("Hypstar R [-]")+
       # ylim(0,0.6) +
       # xlim(0,0.6) +
-      theme_bw(base_size = 15)+
-      theme(aspect.ratio = 1, plot.title = element_text(size=11))
+      theme_classic(base_size = plot_font_size)+
+      theme(aspect.ratio = 1, plot.title = element_text(size=title_font_size), legend.position = "right",
+            legend.text = element_text(size =title_font_size), legend.title = element_text(size = title_font_size))
     
     if(is.null(filename)){
       filename <- paste0("rainbow_",title)
     }
     
-    if(is.null(xlimits)){
+    if(!is.null(xlimits)){
       plot <- plot +
         xlim(xlimits)
     }
     
-    if(is.null(ylimits)){
+    if(!is.null(ylimits)){
       plot <- plot +
         ylim(ylimits)
     }
     
     save_path <- paste0(output_directory, filename,".png")
     
-    ggsave(plot = plot, filename = save_path, height = 5, width = 13)
+    ggsave(plot = plot, filename = save_path, height = height, width = width, units = "cm", dpi = 400)
     
     return(plot)
   }
@@ -1772,10 +1811,11 @@ plot_rainbow <- function(matchup_result,
     library(ggplot2)
   )
   val <- mirai::mirai_map(unique(matchup_result$date),
-                          function(x){return(plot_function(x, matchup_result, point_size, sat_name, values_palette, palette, output_directory, filename))},
+                          function(x){return(plot_function(x, matchup_result, zlimits, point_size, sat_name, values_palette, palette, output_directory, filename))},
                           plot_function = plot_function,
                           matchup_result = matchup_result, 
                           point_size = point_size, 
+                          zlimits = zlimits,
                           sat_name = sat_name, 
                           values_palette = values_palette, 
                           palette = palette,
@@ -1793,7 +1833,11 @@ plot_relative_errors <- function(matchup_result,
                                  ylimits = c(-60,60),
                                  xlimits = c(300,1700),
                                  output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                                 filename = NULL){
+                                 filename = NULL,
+                                 plot_font_size = 15,
+                                 title_font_size = 11,
+                                 height = 5,
+                                 width = 13){
   relative_error_df <- matchup_result |> tidytable::mutate(relative_error = (Ref_sat-Ref_hyp)/ Ref_hyp *100) 
   # library(ggplot2)
   
@@ -1809,32 +1853,38 @@ plot_relative_errors <- function(matchup_result,
       ggtitle(title)+
       # ylim(-60,60)+
       # xlim(300,1700)+#limits for hypstar range
-      geom_point(mapping = aes(x = wvl, y = relative_error, color = relative_error), size = point_size)+
-      scale_color_gradient2('Relative error (%)',      # titolo della legenda
-                            low = 'red', mid = 'darkgreen', high = 'red',
-                            midpoint = 0)+
-      ylab("Relative error (%)")+
+      geom_point(mapping = aes(x = wvl, y = relative_error, color = abs(relative_error)), size = point_size)+
+      # scale_color_gradient2('Bias (%)',      # titolo della legenda
+      #                       low = '#ef5350', mid = '#52bf90', high = '#ef5350',
+      #                       midpoint = 0)+
+      scale_color_gradientn(colours = c('#44ce1b', '#bbdb44', '#f2a134', '#e51f1f'),
+                            values = scales::rescale(x = c(0,20,40,60),
+                                                     to = c(0,1)),
+                            limits = c(0,60),
+                            name = "Bias (%)")+
+      ylab("Bias (%)")+
       xlab("Wavelengths [nm]")+
-      theme_bw(base_size = 15)+
-      theme(plot.title = element_text(size=11))
+      theme_classic(base_size = plot_font_size)+
+      theme(plot.title = element_text(size=title_font_size), legend.position = "bottom",
+            legend.text = element_text(size =title_font_size))
     
     if(is.null(filename)){
       filename <- paste0("relative_error_",title)
     }
     
-    if(is.null(xlimits)){
+    if(!is.null(xlimits)){
       plot <- plot +
         xlim(xlimits)
     }
     
-    if(is.null(ylimits)){
+    if(!is.null(ylimits)){
       plot <- plot +
         ylim(ylimits)
     }
     
     save_path <- paste0(output_directory, filename,".png")
     
-    ggsave(plot = plot, filename = save_path, height = 5, width = 13)
+    ggsave(plot = plot, filename = save_path, height = height, width = width, units = "cm", dpi = 400)
     
     return(plot)
   }
@@ -1911,44 +1961,61 @@ save_function <- function(view_angle_output, filename, output_directory){
 #plot_polar ----
 plot_polar <- function(time_or_sun_angle_output,
                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                       filename = NULL){
-  selected_data <- time_or_sun_angle_output |> tidytable::mutate(wvl_diff = abs(wvl - 900)) |>
-    tidytable::filter(wvl_diff == min(wvl_diff)) |>
-    tidytable::select(-wvl_diff) 
-  
-  exact_wvl <- unique(selected_data$wvl)
-  
-  sat_coord <- selected_data |> tidytable::select(VAA_sat, VZA_sat) |> unique()
+                       filename = NULL,
+                       plot_font_size = 11,
+                       title_font_size = 14,
+                       point_size = 5,
+                       width = 19,
+                       height = 9){
+  geom_coord <- time_or_sun_angle_output |> tidytable::group_by(VZA_hyp, VAA_hyp, SAA_hyp, SZA_hyp) |>
+    tidytable::filter(wvl < 1350 | wvl > 1500) |> #filter the atmospheric window
+    tidytable::mutate(rmse = Metrics::rmse(Ref_hyp,Ref_sat)) |>
+    tidytable::ungroup() |>
+    tidytable::filter(bands == bands[[1]]) #having multiple bands is redundant after computing rmse
   
   library(ggplot2)
-  plot <- ggplot(selected_data) +
-    geom_point(aes(x = VAA_hyp, y = VZA_hyp, color = Ref_sat-Ref_hyp),
-               size = 3) +
+  plot <- ggplot() +
+    geom_point(data = geom_coord, aes(x = VAA_hyp, y = VZA_hyp, color = rmse),
+               size = point_size) +
+    scale_color_gradientn(colours = c('#44ce1b', '#bbdb44', '#f2a134', '#e51f1f'),
+                          values = scales::rescale(x = c(0,0.1,0.2,0.3),
+                                                   to = c(0,1)),
+                          limits = c(0,0.3))+
+    geom_text(data = geom_coord, aes(x = SAA_sat, y = SZA_sat),
+              color = "darkgrey",
+              size = point_size,
+              label = "☼") +
+    geom_text(data = geom_coord |>
+                tidytable::summarise(tidytable::across(.cols = c("SAA_hyp","SZA_hyp"),
+                                                       .fns = mean)), 
+              aes(x = SAA_hyp, y = SZA_hyp),
+              color = "black",
+              size = point_size,
+              label = "☼") +
+    geom_text(data = geom_coord, aes(x = VAA_sat, y = VZA_sat),
+              color = "darkgrey",
+              size = point_size,
+              label = "X") +
     coord_radial(theta = "x", start = -pi*15/180, thetalim = c(0,330), inner.radius = 0.1,
                  r.axis.inside = T) +
-    geom_point(data = sat_coord, aes(x = VAA_sat, y = VZA_sat),
-               color = "black",
-               size = 5,
-               shape = "cross") +
     ylab("VZA [rad]") +
     xlab("VAA [rad]") +
-    scale_color_gradient2('Ref_sat - Ref_hyp',      # titolo della legenda
-                          low = 'blue', mid = 'green', high = 'red',
-                          midpoint = 0)+
     scale_x_continuous(
       limits = c(0, 360),
       breaks = seq(0, 330, by = 30),
       minor_breaks = NULL
     )+
-    ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+    theme_classic(base_size = plot_font_size)+
+    theme(plot.title = element_text(size=title_font_size))+
+    ggtitle(paste0(make_title_for_polar_plots(geom_coord),"_VZA_sat_",round(unique(geom_coord$VZA_sat),0),"_VAA_sat_",round(unique(geom_coord$VAA_sat),0)))
   
   if(is.null(filename)){
-    filename <- paste0("polar_plot_",paste0(make_title_for_polar_plots(selected_data),"_at_",round(exact_wvl,0),"nm_","VZA_sat_",round(unique(selected_data$VZA_sat),0),"_VAA_sat_",round(unique(selected_data$VAA_sat),0)))
+    filename <- paste0("polar_plot_",make_title_for_polar_plots(geom_coord),"_VZA_sat_",round(unique(geom_coord$VZA_sat),0),"_VAA_sat_",round(unique(geom_coord$VAA_sat),0))
   }
   
   save_path <- paste0(output_directory, filename,".png")
   
-  ggsave(plot = plot, filename = save_path, height = 9, width = 19)
+  ggsave(plot = plot, filename = save_path, height = height, width = width, units = "cm", dpi = 400)
   
   return(plot)
 }
@@ -1956,7 +2023,11 @@ plot_polar <- function(time_or_sun_angle_output,
 #plot_polar_for_elemental ----
 plot_polar_for_elemental <- function(geometry_output,
                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
-                       filename = NULL){
+                       filename = NULL,
+                       plot_font_size = 15,
+                       title_font_size = 11,
+                       width = 19,
+                       height = 9){
   geom_coord <- geometry_output |> tidytable::group_by(VZA_hyp, VAA_hyp, SAA_hyp, SZA_hyp) |>
     tidytable::filter(wvl < 1350 | wvl > 1500) |> #filter the atmospheric window
     tidytable::mutate(rmse = Metrics::rmse(Ref_hyp,Ref_sat)) |>
@@ -1989,21 +2060,23 @@ plot_polar_for_elemental <- function(geometry_output,
                  r.axis.inside = T) +
     ylab("VZA [rad]") +
     xlab("VAA [rad]") +
-    scale_color_gradient("rmse",
-      low = "green", high = "red", limits = c(0,0.3))+
+    scale_color_gradientn(colours = c('#44ce1b', '#bbdb44', '#f2a134', '#e51f1f'),
+                          values = scales::rescale(x = c(0,0.1,0.2,0.3),
+                                                   to = c(0,1)),
+                          limits = c(0,0.3))+
     scale_x_continuous(
       limits = c(0, 360),
       breaks = seq(0, 330, by = 30),
       minor_breaks = NULL
     )+
-    theme_bw(base_size = 15)+
-    theme(plot.subtitle = element_text(size=11))+
+    theme_classic(base_size = plot_font_size)+
+    theme(plot.subtitle = element_text(size=title_font_size))+
     ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots_elemental(geom_coord),"_VZA_sat_",round(unique(geom_coord$VZA_sat),0),"_VAA_sat_",round(unique(geom_coord$VAA_sat),0),"_RA_sat_",round(unique(geom_coord$RA_sat),0),"_plane_inc_sat_",round(unique(geom_coord$PI_sat),0)))
   
   table <- geom_coord |> tidytable::select(RA_hyp, RA_diff, 
                                            PI_hyp, PI_diff, 
                                            SE_hyp, SE_diff,
-                                           average_RA_PI_diff, average_RE_PI_SE_diff,
+                                           average_RA_PI_diff, average_RA_PI_SE_diff,
                                            rmse) |> 
     tidytable::mutate(tidytable::across(.cols = everything(), ~round(.x,2)))
   
@@ -2049,7 +2122,7 @@ plot_polar_for_elemental <- function(geometry_output,
   
   save_path <- paste0(output_directory, filename,".png")
   
-  ggsave(plot = comboplot, filename = save_path, height = 9, width = 19)
+  ggsave(plot = comboplot, filename = save_path, height = height, width = width, units = "cm", dpi = 400)
   
   return(comboplot)
 }
@@ -2065,7 +2138,7 @@ plot_all_view_spectra <- function(time_or_sun_angle_output,
 #make_title_for_polar_plots ----
 make_title_for_polar_plots <- function(time_or_sun_angle_output){
   title = paste0("SAT-",unique(substr(time_or_sun_angle_output$sensor,1,2)),
-                 "_HYP-",
+                 "_HYP",unique(time_or_sun_angle_output$level),"-",
                  unique(substr(time_or_sun_angle_output$hyp_sensor,1,4)),
                  "_DT-", 
                  gsub("-","",unique(time_or_sun_angle_output$date)),
@@ -2084,7 +2157,7 @@ make_title_for_polar_plots <- function(time_or_sun_angle_output){
 #make_title_for_polar_plots_elemental ----
 make_title_for_polar_plots_elemental <- function(time_or_sun_angle_output){
   title = paste0("SAT-",unique(substr(time_or_sun_angle_output$sensor,1,2)),
-                 "_HYP-",
+                 "_HYP",unique(time_or_sun_angle_output$level),"-",
                  unique(substr(time_or_sun_angle_output$hyp_sensor,1,4)),
                  "_DT-", 
                  gsub("-","",unique(time_or_sun_angle_output$date)),
@@ -2179,7 +2252,7 @@ make_title_for_matchup_plots <- function(matchup_result){
 }
 
 #get_list_of_date_datasets ----
-get_list_of_date_datasets <- function(date_to_keep, dataset){
+get_list_of_date_datasets <- function(date_to_keep, dataset, width, height){
   return(dataset |> tidytable::filter(date == date_to_keep))
 }
 
@@ -2200,7 +2273,8 @@ create_summary <- function(date_start,
                            filename = NULL){
   #get hypstar data
   hypstar_data <- get_hypstar_data(date_start = date_start, 
-                                   date_end = date_end)
+                                   date_end = date_end,
+                                   level = "L2B")
   
   #get s2 data 
   s2_data <- get_s2_data(date_start = date_start,

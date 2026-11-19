@@ -17,7 +17,7 @@ repo_root_path_prs = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_a
 #                repo_root_path_prs = repo_root_path_prs,
 #                output_summary_folder = output_summary_folder)
 
-create_summary(date_start = "2025-03-15",
-               date_end = "2025-03-25",
+create_summary(date_start = "2025-03-01",
+               date_end = "2025-06-30",
                repo_root_path_prs = repo_root_path_prs,
                output_summary_folder = output_summary_folder)
