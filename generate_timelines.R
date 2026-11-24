@@ -5,6 +5,7 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 timeline_repo = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Timelines/csv"
 
 #generate timeline
-timeline <- create_timeline(timeline_repo = timeline_repo)
+timeline <- create_timeline(timeline_repo = timeline_repo,
+                            plot_size = 14)
 
 timeline

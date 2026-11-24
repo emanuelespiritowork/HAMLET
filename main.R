@@ -53,7 +53,12 @@ matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
                                          range_view_angle = 360,
                                          delVZA = c(0),
                                          weighted_mean = F,
-                                         print_polar = F)
+                                         print_polar = T, 
+                                         height_polar_plot = 9,
+                                         width_polar_plot = 10,
+                                         plot_font_size_polar_plot = 13,
+                                         title_font_size_polar_plot = 8,
+                                         point_size_polar_plot = 3)
 
 plot <- plot_ribbon(matchup_result_to_S2, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
 plot <- plot_rainbow(matchup_result_to_S2, height = 9, width = 10, plot_font_size = 14, title_font_size = 10)

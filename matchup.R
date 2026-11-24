@@ -1682,18 +1682,34 @@ plot_ribbon <- function(matchup_result,
   plot_function <- function(date_sel, ylimits, xlimits, matchup_result, output_directory, filename, sat_color, alpha,color_station){
     data_plot <- matchup_result |> tidytable::filter(date == date_sel) 
     title <- make_title_for_matchup_plots(data_plot)
-    plot <- ggplot(data = data_plot) + 
-      geom_line(aes(x = wvl, y = Ref_sat), linewidth = 1, color = sat_color) +
-      geom_line(aes(x = wvl, y = Ref_hyp), linewidth = 1, color = color_station) +
-      geom_ribbon(aes(x = wvl, y = Ref_sat, ymin = Ref_sat - sd_sat, ymax = Ref_sat + sd_sat), alpha = alpha, fill = sat_color) +
-      geom_ribbon(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, fill = color_station) +
-      ggtitle(title) +
-      ylab("R [-]") +
-      # ylim(0,0.6)+#limits for what we saw in the fields
-      # xlim(300,1700)+#limits for hypstar range
-      xlab("Wavelength [nm]") +
-      theme_classic(base_size = plot_font_size) +
-      theme(plot.title = element_text(size=title_font_size))
+    number_of_bands <- length(unique(matchup_result$band))
+    if(number_of_bands > 50){
+      plot <- ggplot(data = data_plot) + 
+        geom_line(aes(x = wvl, y = Ref_sat), linewidth = 1, color = sat_color) +
+        geom_line(aes(x = wvl, y = Ref_hyp), linewidth = 1, color = color_station) +
+        geom_ribbon(aes(x = wvl, y = Ref_sat, ymin = Ref_sat - sd_sat, ymax = Ref_sat + sd_sat), alpha = alpha, fill = sat_color) +
+        geom_ribbon(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, fill = color_station) +
+        ggtitle(title) +
+        ylab("R [-]") +
+        # ylim(0,0.6)+#limits for what we saw in the fields
+        # xlim(300,1700)+#limits for hypstar range
+        xlab("Wavelength [nm]") +
+        theme_classic(base_size = plot_font_size) +
+        theme(plot.title = element_text(size=title_font_size))
+    }else{
+      plot <- ggplot(data = data_plot) + 
+        geom_point(aes(x = wvl, y = Ref_sat), linewidth = 1, color = sat_color) +
+        geom_point(aes(x = wvl, y = Ref_hyp), linewidth = 1, color = color_station) +
+        geom_errorbar(aes(x = wvl, y = Ref_sat, ymin = Ref_sat - sd_sat, ymax = Ref_sat + sd_sat), alpha = alpha, color = sat_color) +
+        geom_errorbar(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, color = color_station) +
+        ggtitle(title) +
+        ylab("R [-]") +
+        # ylim(0,0.6)+#limits for what we saw in the fields
+        # xlim(300,1700)+#limits for hypstar range
+        xlab("Wavelength [nm]") +
+        theme_classic(base_size = plot_font_size) +
+        theme(plot.title = element_text(size=title_font_size))
+    }
     
     if(!is.null(ylimits)){
       plot <- plot + ylim(ylimits)
@@ -2478,18 +2494,26 @@ create_timeline_for_multi <- function(repo_root_path_s2 = "//10.0.1.243/Reposito
   return(valid_acquisitions)
 }
 
-create_timeline_for_hypstar <- function(hypstar_home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED"){
-  full_list <- data.table::data.table(folder_name = list.dirs(hypstar_home_path, recursive = FALSE, full.names = FALSE))
+create_timeline_for_hypstar <- function(hypstar_home_path_l2a = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
+                                        hypstar_home_path_l2b = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED_L2B",
+                                        level){
+  if(level == "L2A"){
+    full_list <- data.table::data.table(folder_name = list.dirs(hypstar_home_path_l2a, recursive = FALSE, full.names = FALSE))
+    
+    list_of_files_to_be <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
+                                                          time = substr(folder_name, 12, 20)) |>
+      tidytable::pull(date) |>
+      unique()
+  }else if(level == "L2B"){
+    list_of_files_to_be <- data.table::data.table(folder_name = list.files(hypstar_home_path_l2b, recursive = FALSE, full.names = F, pattern = "L2B_REF")) |>
+      tidytable::mutate(date = as.Date(substr(basename(folder_name),26,33),format = "%Y%m%d"),
+                        time = paste0("T",substr(basename(folder_name),35,38),"00")) |>
+      tidytable::pull(date) |>
+      unique()
+  }else{
+    stop("Wrong level")
+  }
   
-  folder_list  <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
-                                                 time = substr(folder_name, 12, 20)) |>
-    tidytable::pull(date) |>
-    unique()
-  
-  list_of_files_to_be <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
-                                                        time = substr(folder_name, 12, 20)) |>
-    tidytable::pull(date) |>
-    unique()
   
   hypstar_list <- tapply(list_of_files_to_be, cumsum(c(TRUE, diff(list_of_files_to_be) > 2)), range) 
   listed <- lapply(1:length(hypstar_list),function(x,hypstar_list){return(hypstar_list[[x]])},
@@ -2502,7 +2526,8 @@ create_timeline_for_hypstar <- function(hypstar_home_path = "//10.0.1.243/projec
   return(hypstar_db)
 }
 
-create_timeline <- function(timeline_repo = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Timelines/csv"){
+create_timeline <- function(timeline_repo = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Timelines/csv",
+                            plot_size = 14){
   planning <- tidytable::fread(paste0(timeline_repo,"/field_planning.csv")) |>
     tidytable::mutate(date_start = as.Date(date_start, format = "%d/%m/%Y")) |>
     tidytable::mutate(date_end = as.Date(date_end, format = "%d/%m/%Y")) |>
@@ -2540,8 +2565,8 @@ create_timeline <- function(timeline_repo = "//10.0.1.243/nr_working/emanuele/Pr
     tidytable::select(-tidytable::any_of(c("date","clock"))) |>
     tidytable::mutate(tooltip = paste0(group, " ", type, " acquisition on ", date_start))
   
-  hypstar_acquisitions <- create_timeline_for_hypstar() |>
-    tidytable::mutate(tooltip = paste0(group, " ", type, " acquisition on ", date_start))
+  hypstar_acquisitions <- create_timeline_for_hypstar(level = "L2B") |>
+    tidytable::mutate(tooltip = paste0(group, " ", type, " acquisition from ", date_start, " to ", date_end))
   
   color_and_groups <- data.frame(type = c("unclassified","scattered_clouds",
                                           "clear_sky","haze_cirrus_clouds",
@@ -2549,14 +2574,14 @@ create_timeline <- function(timeline_repo = "//10.0.1.243/nr_working/emanuele/Pr
                                           "harvest","tillage","sowing",
                                           "flowering","positive","negative",
                                           "wheat","cover",
-                                          "soybean"),
+                                          "soybean","treatment","lodging"),
                                  plotcolor = c("black","lightblue",
                                                "blue","lightgrey",
                                                "grey","lightblue","black",
                                                "gold","brown","green",
                                                "pink","green","red",
                                                "darkgreen","red",
-                                               "darkorange"))
+                                               "darkorange","brown","violet"))
   
   binded_database <- hyperspectral_acquisitions |>
     tidytable::bind_rows(multispectral_acquisitions) |>
@@ -2572,7 +2597,7 @@ create_timeline <- function(timeline_repo = "//10.0.1.243/nr_working/emanuele/Pr
                    col.group = "group",
                    col.color = "plotcolor",
                    col.tooltip = "tooltip",
-                   linewidth = 15,
+                   linewidth = plot_size,
                    show_labels = F)
   
   return(plotlyplot)
