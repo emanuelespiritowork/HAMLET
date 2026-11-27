@@ -15,7 +15,7 @@ source("//10.0.1.243/nr_working/emanuele/Progetto_JSIT/JSIT-hypstar/matchup.R")
 # date_start <- "2025-04-21"
 # date_end <- "2025-04-30"
 date_start <- "2025-03-01"
-date_end <- "2025-03-30"
+date_end <- "2025-06-30"
 # repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1" 
 #or 
 repo_root_path_prs <- "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2"
@@ -109,16 +109,11 @@ matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
                                              range_view_angle = 360,
                                              delVZA = c(0),
                                              weighted_mean = F,
-                                             print_polar = T, 
-                                             height_polar_plot = 9,
-                                             width_polar_plot = 10,
-                                             plot_font_size_polar_plot = 13,
-                                             title_font_size_polar_plot = 8,
-                                             point_size_polar_plot = 3)
+                                             print_polar = T)
 
-plot <- plot_ribbon(matchup_result_to_PRISMA[[1]], height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
-plot <- plot_rainbow(matchup_result_to_PRISMA[[1]], height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
-plot <- plot_relative_errors(matchup_result_to_PRISMA[[1]], height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
+plot <- plot_ribbon(matchup_result_to_PRISMA[[1]])
+plot <- plot_rainbow(matchup_result_to_PRISMA[[1]])
+plot <- plot_relative_errors(matchup_result_to_PRISMA[[1]])
 
 #matchup to PRISMA
 matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
@@ -158,16 +153,11 @@ matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
                                             range_view_angle = 360,
                                             delVZA = c(0),
                                             weighted_mean = F,
-                                            print_polar = T,
-                                            height_polar_plot = 9,
-                                            width_polar_plot = 10,
-                                            plot_font_size_polar_plot = 13,
-                                            title_font_size_polar_plot = 8,
-                                            point_size_polar_plot = 3)
+                                            print_polar = T)
 
-plot <- plot_ribbon(matchup_result_to_EnMAP[[1]], height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
-plot <- plot_rainbow(matchup_result_to_EnMAP[[1]], height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
-plot <- plot_relative_errors(matchup_result_to_EnMAP[[1]], height = 9, width = 10, plot_font_size = 14, title_font_size = 10)
+plot <- plot_ribbon(matchup_result_to_EnMAP[[1]])
+plot <- plot_rainbow(matchup_result_to_EnMAP[[1]])
+plot <- plot_relative_errors(matchup_result_to_EnMAP[[1]])
 
 #matchup to EnMAP
 matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,

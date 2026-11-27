@@ -318,39 +318,28 @@ hypstar_spectral_resampling <- function(dataset_res, #station data
 }
 
 #pixel_aggregation_function ----
-pixel_aggregation_function <- function(function_type = "exact", #choose between "exact" and "terra"
-                                       aggregation_type = "mean", #choose between "mean" and "weight"
+pixel_aggregation_function <- function(aggregation_type, #choose between "mean" and "weight"
                                        raster, 
-                                       vector,
-                                       max_number_of_pixels){
-  if(function_type == "exact"){
-    #pixel extraction done using exact_extract
-    pixel_extraction <- exactextractr::exact_extract(raster, vector, coverage_area = F,
-                                                     include_cols = names(vector)[names(vector) != "geometry"]) |>
-      tidytable::bind_rows() |>
-      tidytable::select(-FID,-X,-y)
-  }else if(function_type == "terra"){
-    #pixel extraction done using terra
-    pixel_extraction <- terra::extract(raster, vector, fun = "table", touches = T, weights = T) |>
-      tidytable::select(-ID) |>
-      `names<-`(c("value","coverage_fraction"))
-  }else{
-    stop("Error, choose a function_type among 'exact' and 'terra'")
-  }
+                                       polygon,
+                                       number_closest_pixels){
+  pixel_extraction <- terra::extract(raster, polygon, xy = T, touches = T) |>
+    tidytable::select(-ID) |>
+    tidytable::mutate(x_hyp = polygon$X, y_hyp = polygon$y) |>
+    tidytable::mutate(distance = sqrt((x-x_hyp)^2 + (y-y_hyp)^2)) |>
+    tidytable::arrange(distance) |>
+    tidytable::filter(tidytable::row_number() <= number_closest_pixels) |>
+    tidytable::select(-c(x,y,x_hyp,y_hyp)) |>
+    `names<-`(c("value","distance")) 
   
   if(aggregation_type == "mean"){
     #here we perform the simple mean using all the max_number_of_pixels closest pixels  
     pixel_aggregation <- pixel_extraction |>
-      tidytable::arrange(desc(coverage_fraction)) |>
-      tidytable::select(-coverage_fraction) |>
-      tidytable::filter(tidytable::row_number() <= max_number_of_pixels) |>
+      tidytable::select(-distance) |>
       tidytable::summarise(sd = sd(value, na.rm = T), mean = mean(value, na.rm=T))
   }else if(aggregation_type == "weight"){
     #here we perform the weighted mean using all the max_number_of_pixels closest pixels
     pixel_aggregation <- pixel_extraction |>
-      tidytable::arrange(desc(coverage_fraction)) |>
-      tidytable::filter(tidytable::row_number() <= max_number_of_pixels) |>
-      tidytable::summarise(mean = weighted.mean(x = value, w = coverage_fraction, na.rm=T),
+      tidytable::summarise(mean = weighted.mean(x = value, w = 1/distance, na.rm=T),
                            sd = sd(value, na.rm = T))
   }else{
     stop("Error, choose an aggregation_type among 'mean' and 'weight'.")
@@ -558,10 +547,9 @@ get_sat_orbit <- function(satellite, product_path){
 #get_statistics_dataset ----
 get_statistics_dataset <- function(satellite,
                                    product_path, 
-                                   hypstar_point_buffered, 
+                                   polygon, 
                                    aggregation_type, 
-                                   number_closest_pixels, 
-                                   function_type){
+                                   number_closest_pixels){
   
   message(product_path)
   
@@ -582,9 +570,8 @@ get_statistics_dataset <- function(satellite,
   sensor_ID <- get_sat_sensor_ID(satellite = satellite,
                                  product_path = product_path)
   
-  bands_statistics <- lapply(bands_data[[1]], pixel_aggregation_function, vector = hypstar_point_buffered,
-                             max_number_of_pixels = number_closest_pixels, aggregation_type = aggregation_type,
-                             function_type = function_type) |>
+  bands_statistics <- lapply(bands_data[[1]], pixel_aggregation_function, polygon = polygon,
+                             number_closest_pixels = number_closest_pixels, aggregation_type = aggregation_type) |>
     tidytable::bind_rows()
   
   angles <- get_sat_angles(satellite = satellite, product_path = product_path, bands_statistics = bands_statistics,
@@ -608,30 +595,25 @@ get_statistics_dataset <- function(satellite,
 get_sat_data <- function(product_paths,
                          hypstar_point_path,
                          satellite,
+                         date_start,
+                         date_end,
                          number_closest_pixels,
                          aggregation_type,
-                         pixel_aggregation_function,
-                         function_type,
                          orbit_type_to_keep,
+                         search_radius = 30,
                          scale){
   print(product_paths)
   
-  if(identical(product_paths,character(0))){
-    print(paste0("non ci sono acquisizioni ", satellite, " nel periodo ", date_start, " - ", date_end))
-    return(NULL)
-  }
-  
   hypstar_point <- invisible(sf::st_read(hypstar_point_path))
   
-  hypstar_point_buffered <- invisible(sf::st_buffer(hypstar_point, dist = 30) )
+  hypstar_point_buffered <- invisible(sf::st_buffer(hypstar_point, dist = search_radius))
   
-  all_datasets <- mirai::mirai_map(product_paths, function(x){return(get_statistics_dataset(satellite,x,hypstar_point_buffered,aggregation_type,number_closest_pixels,function_type))},
+  all_datasets <- mirai::mirai_map(product_paths, function(x){return(get_statistics_dataset(satellite,x,polygon,aggregation_type,number_closest_pixels))},
                                    get_statistics_dataset = get_statistics_dataset,
                                    pixel_aggregation_function = pixel_aggregation_function,
-                                   hypstar_point_buffered = hypstar_point_buffered,
+                                   polygon = hypstar_point_buffered,
                                    aggregation_type = aggregation_type, 
                                    number_closest_pixels = number_closest_pixels, 
-                                   function_type = function_type,
                                    satellite = satellite,
                                    get_sat_date = get_sat_date,
                                    get_sat_time = get_sat_time,
@@ -643,7 +625,7 @@ get_sat_data <- function(product_paths,
   binded <- tidytable::bind_rows(all_datasets)|>
     stats::na.omit() 
   
-  if(nrow(binded) != 0){
+  if(nrow(binded) > 0){
     
     #check orbit type
     binded <- binded |>
@@ -660,10 +642,8 @@ get_sat_data <- function(product_paths,
     with_wvl <- add_wvl(binded) |>
       stats::na.omit()
   }else{
-    print(paste0("le acquisizioni ", satellite, " nel periodo ", date_start, " - ", date_end, " sono mascherate"))
     return(NULL)
   }
-   
   
   return(with_wvl)
 }
@@ -673,9 +653,9 @@ get_s2_data <- function(date_start,
                         date_end,
                         repo_root_path = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/", #masked S2 data
                         number_closest_pixels = 20,
+                        search_radius = 30,
                         scale = NA, #the number to divide to
                         aggregation_type = "mean", # this can be 1,2,3 depending on: 
-                        function_type = "exact",
                         orbit_type_to_keep = c("descending"),
                         hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                         output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
@@ -710,20 +690,26 @@ get_s2_data <- function(date_start,
   
   product_paths <- unlist(lapply(repo_year_path, get_products_paths))
   
+  if(identical(product_paths,character(0))){
+    print(paste0("non ci sono acquisizioni ", "S2", " nel periodo ", date_start, " - ", date_end))
+    return(NULL)
+  }
+  
   sat_data <- get_sat_data(product_paths = product_paths,
                            satellite = "S2",
                            number_closest_pixels = number_closest_pixels,
                            aggregation_type = aggregation_type,
-                           pixel_aggregation_function = pixel_aggregation_function,
-                           function_type = function_type,
                            hypstar_point_path = hypstar_point_path,
                            orbit_type_to_keep = orbit_type_to_keep,
+                           search_radius = search_radius,
                            scale = scale)
   
   if(!is.null(sat_data)){
     tidytable::fwrite(sat_data,
                       paste0(output_directory,"S2_data_from_", date_start, "_to_", date_end, ".csv"),
                       append = F)
+  }else{
+    print(paste0("le acquisizioni ", "S2", " nel periodo ", date_start, " - ", date_end, " sono mascherate"))
   }
   
   return(sat_data)
@@ -736,9 +722,9 @@ get_PRISMA_data <- function(date_start,
                             hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp",
                             repo_root_path = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/processing_L1", # o //10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2
                             number_closest_pixels = 4,
+                            search_radius = 30,
                             scale = NA, #the number to divide to
                             aggregation_type = "mean", 
-                            function_type = "exact",
                             orbit_type_to_keep = c("descending"),
                             output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
   print(paste0("Retrieving PRISMA data from ", date_start, " to ", date_end))
@@ -763,13 +749,17 @@ get_PRISMA_data <- function(date_start,
   list_of_dates <- lapply(list_of_products,function(x){return(as.Date(substring(strsplit(basename(x), split = "_")[[1]][[5]],"1","8"), format = "%Y%m%d"))})
   product_paths <- unlist(list_of_products[list_of_dates > as.Date(date_start) & list_of_dates < as.Date(date_end)])
   
+  if(identical(product_paths,character(0))){
+    print(paste0("non ci sono acquisizioni ", "PRS", " nel periodo ", date_start, " - ", date_end))
+    return(NULL)
+  }
+  
   sat_data <- get_sat_data(product_paths = product_paths,
                            satellite = "PRS",
                            number_closest_pixels = number_closest_pixels,
                            aggregation_type = aggregation_type,
-                           pixel_aggregation_function = pixel_aggregation_function,
-                           function_type = function_type,
                            hypstar_point_path = hypstar_point_path,
+                           search_radius = search_radius,
                            orbit_type_to_keep = orbit_type_to_keep,
                            scale = scale)
   
@@ -777,6 +767,8 @@ get_PRISMA_data <- function(date_start,
     tidytable::fwrite(sat_data,
                       paste0(output_directory,"PRISMA_data_from_", date_start, "_to_", date_end, ".csv"),
                       append = F)
+  }else{
+    print(paste0("le acquisizioni ", "PRS", " nel periodo ", date_start, " - ", date_end, " sono mascherate"))
   }
   
   return(sat_data)
@@ -789,9 +781,9 @@ get_EnMAP_data <- function(date_start,
                            hypstar_point_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/VECTOR/HYPSTAR_station/Posizione_punto/JSIT_Hypstar_EPSG32632.shp", #hypstar shapefile path
                            repo_root_path = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/", #the main folder of EnMAP data
                            number_closest_pixels = 2,
+                           search_radius = 30,
                            scale = NA,
                            aggregation_type = "mean", 
-                           function_type = "exact",
                            orbit_type_to_keep = c("descending"),
                            output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/"){
   print(paste0("Retrieving EnMAP data from ", date_start, " to ", date_end))
@@ -825,20 +817,26 @@ get_EnMAP_data <- function(date_start,
   
   product_paths <- unlist(lapply(repo_year_path, get_products_paths))
   
+  if(identical(product_paths,character(0))){
+    print(paste0("non ci sono acquisizioni ", "En", " nel periodo ", date_start, " - ", date_end))
+    return(NULL)
+  }
+  
   sat_data <- get_sat_data(product_paths = product_paths,
                            satellite = "En",
                            number_closest_pixels = number_closest_pixels,
                            aggregation_type = aggregation_type,
-                           pixel_aggregation_function = pixel_aggregation_function,
-                           function_type = function_type,
                            hypstar_point_path = hypstar_point_path,
                            orbit_type_to_keep = orbit_type_to_keep,
+                           search_radius = search_radius,
                            scale = scale)
   
   if(!is.null(sat_data)){
     tidytable::fwrite(sat_data,
                       paste0(output_directory,"EnMAP_data_from_", date_start, "_to_", date_end, ".csv"),
                       append = F)
+  }else{
+    print(paste0("le acquisizioni ", "En", " nel periodo ", date_start, " - ", date_end, " sono mascherate"))
   }
   
   return(sat_data)
@@ -911,9 +909,10 @@ matchup_function <- function(sat_data,
   
   hypstar_col_renamed <- hypstar_resampled |> tidytable::rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor,wvl)) 
   
-  
-  # library(tidytable)
-  
+  if(!check_date_overlaps(sat_data = sat_col_renamed, hypstar_data = hypstar_col_renamed, only_same_date = only_same_date)){
+    print("No available common dates for matchups")
+    return(list(NULL,NULL))
+  }
   
   #DATE PROBLEM
   date_output <- date_function(sat_col_renamed = sat_col_renamed,
@@ -986,6 +985,20 @@ check_data_types <- function(date_output){
     tidytable::mutate(SZA_hyp = as.numeric(SZA_hyp))
 }
 
+check_date_overlaps <- function(sat_data,hypstar_data,only_same_date){
+  if(only_same_date){
+    list_of_sat_dates <- unique(sat_data$date)
+    list_of_hyp_dates <- unique(hypstar_data$date)
+    if(length(intersect(list_of_sat_dates,list_of_hyp_dates)) > 0){
+      return(TRUE)
+    }else{
+      return(FALSE)
+    }
+  }else{
+    return(TRUE)
+  }
+}
+
 #matchup_function_best_geometry ----
 matchup_function_best_geometry <- function(sat_data, 
                              hypstar_data,
@@ -1002,7 +1015,8 @@ matchup_function_best_geometry <- function(sat_data,
                              plot_font_size_polar_plot = 12,
                              title_font_size_polar_plot = 4.5,
                              point_size_polar_plot = 2,
-                             maximum_rmse_polar_plot = 0.3
+                             maximum_rmse_polar_plot = 0.3,
+                             table_font_size_polar_plot = 4
 ){
   
   #to remove specific sensor view angles
@@ -1043,6 +1057,11 @@ matchup_function_best_geometry <- function(sat_data,
   sat_col_renamed <- sat_data |> tidytable::rename_with(~paste0(.,"_sat"),-c(bands,date,sensor,wvl)) 
   
   hypstar_col_renamed <- hypstar_resampled |> tidytable::rename_with(~paste0(.,"_hyp"),-c(bands,date,sensor,wvl)) 
+  
+  if(!check_date_overlaps(sat_data = sat_col_renamed, hypstar_data = hypstar_col_renamed, only_same_date = only_same_date)){
+    print("No available common dates for matchups")
+    return(list(NULL,NULL))
+  }
   
   #DATE PROBLEM
   date_output <- date_function(sat_col_renamed = sat_col_renamed,
@@ -1086,7 +1105,8 @@ matchup_function_best_geometry <- function(sat_data,
                                   plot_font_size = plot_font_size_polar_plot,
                                   title_font_size = title_font_size_polar_plot,
                                   point_size = point_size_polar_plot,
-                                  maximum_rmse = maximum_rmse_polar_plot)
+                                  maximum_rmse = maximum_rmse_polar_plot,
+                                  table_font_size = table_font_size_polar_plot)
   }else{
     list_of_polar_plots = NULL
   }
@@ -2059,6 +2079,7 @@ plot_polar_for_elemental <- function(geometry_output,
                        point_size = 2,
                        width = 19,
                        height = 9,
+                       table_font_size = 4,
                        maximum_rmse = 0.3){
   geom_coord <- geometry_output |> tidytable::group_by(VZA_hyp, VAA_hyp, SAA_hyp, SZA_hyp) |>
     tidytable::filter(wvl < 1350 | wvl > 1500) |> #filter the atmospheric window
@@ -2113,10 +2134,10 @@ plot_polar_for_elemental <- function(geometry_output,
     tidytable::rename(av_RA_PI_diff = average_RA_PI_diff, av_RA_PI_SE_diff = average_RA_PI_SE_diff) |>
     tidytable::mutate(tidytable::across(.cols = everything(), ~round(.x,2)))
   
-  table_to_plot <- ggpubr::ggtexttable(table, theme = ggpubr::ttheme(base_size = 4, padding = unit(c(2,2), "mm"))) |>
-    ggpubr::table_cell_font(row = 1, column = 9, color = "#0000FF", size = 4) |>
-    ggpubr::table_cell_font(row = 1, column = 3, color = "#B300FF", size = 4) |>
-    ggpubr::table_cell_font(row = 1, column = 8, color = "brown", size = 4)
+  table_to_plot <- ggpubr::ggtexttable(table, theme = ggpubr::ttheme(base_size = table_font_size, padding = unit(c(table_font_size/2,table_font_size/2), "mm"))) |>
+    ggpubr::table_cell_font(row = 1, column = 9, color = "#0000FF", size = table_font_size) |>
+    ggpubr::table_cell_font(row = 1, column = 3, color = "#B300FF", size = table_font_size) |>
+    ggpubr::table_cell_font(row = 1, column = 8, color = "brown", size = table_font_size)
     
   if(sum(geom_coord$best_geometry_1) == 1){
     plot <- plot + 
@@ -2302,11 +2323,13 @@ create_summary <- function(date_start,
                            date_end,
                            repo_root_path_prs,
                            output_summary_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/summary/",
+                           hypstar_level,
+                           summary_type,
                            filename = NULL){
   #get hypstar data
   hypstar_data <- get_hypstar_data(date_start = date_start, 
                                    date_end = date_end,
-                                   level = "L2B")
+                                   level = hypstar_level)
   
   #get s2 data 
   s2_data <- get_s2_data(date_start = date_start,
@@ -2314,15 +2337,50 @@ create_summary <- function(date_start,
   
   if(!is.null(s2_data) & !is.null(hypstar_data)){
     print("Start matchups with S2 data")
-    matchup_result_to_S2_v2 <- matchup_function_best_geometry(sat_data = s2_data,
-                                                   hypstar_data = hypstar_data,
-                                                   delVZA = c(0),
-                                                   print_polar = T)
-  
-    s2_ribbon_plots <- plot_ribbon(matchup_result_to_S2_v2[[1]])
-    s2_rainbow_plots <- plot_rainbow(matchup_result_to_S2_v2[[1]])
-    s2_errors_plots <- plot_relative_errors(matchup_result_to_S2_v2[[1]])
-    s2_polar_plots <- matchup_result_to_S2_v2[[2]]
+    if(summary_type == "bestconfig"){
+      matchup_result_to_S2 <- matchup_function_best_geometry(sat_data = s2_data,
+                                                                hypstar_data = hypstar_data,
+                                                                delVZA = c(0),
+                                                                print_polar = T,
+                                                                width_polar_plot = 19,
+                                                                height_polar_plot = 9,
+                                                                plot_font_size_polar_plot = 18,
+                                                                title_font_size_polar_plot = 12,
+                                                                table_font_size_polar_plot = 10,
+                                                                point_size_polar_plot = 6,
+                                                                maximum_rmse_polar_plot = 0.3)
+      
+    }else if(summary_type == "average"){
+      matchup_result_to_S2 <- matchup_function(sat_data = s2_data,
+                                                  hypstar_data = hypstar_data,
+                                                  time_or_sun_angle = T,
+                                                  just_closest_time_or_sun_angle = T,
+                                                  just_closest_view_angle = F,
+                                                  range_view_angle = 360,
+                                                  delVZA = c(0),
+                                                  weighted_mean = F,
+                                                  print_polar = T,
+                                                  width_polar_plot = 10,
+                                                  height_polar_plot = 9,
+                                                  plot_font_size_polar_plot = 18,
+                                                  title_font_size_polar_plot = 12,
+                                                  point_size_polar_plot = 6,
+                                                  maximum_rmse_polar_plot = 0.3)
+    }else{
+      stop("Wrong summary type")
+    }
+    
+    if(is.null(matchup_result_to_S2[[1]])){
+      s2_ribbon_plots <- NULL
+      s2_rainbow_plots <- NULL
+      s2_errors_plots <- NULL
+      s2_polar_plots <- NULL
+    }else{
+      s2_ribbon_plots <- plot_ribbon(matchup_result_to_S2[[1]], title_font_size = 14, point_size = 6, plot_font_size = 18)
+      s2_rainbow_plots <- plot_rainbow(matchup_result_to_S2[[1]], title_font_size = 14, point_size = 6, plot_font_size = 18)
+      s2_errors_plots <- plot_relative_errors(matchup_result_to_S2[[1]], title_font_size = 14, point_size = 6, plot_font_size = 18)
+      s2_polar_plots <- matchup_result_to_S2[[2]]
+    }
   }else{
     s2_ribbon_plots <- NULL
     s2_rainbow_plots <- NULL
@@ -2337,15 +2395,49 @@ create_summary <- function(date_start,
   
   if(!is.null(PRISMA_data)  & !is.null(hypstar_data)){
     print("Start matchups with PRISMA data")
-    matchup_result_to_PRISMA_v2 <- matchup_function_best_geometry(sat_data = PRISMA_data,
-                                                       hypstar_data = hypstar_data,
-                                                       delVZA = c(0),
-                                                       print_polar = T)
+    if(summary_type == "bestconfig"){
+      matchup_result_to_PRISMA <- matchup_function_best_geometry(sat_data = PRISMA_data,
+                                                                    hypstar_data = hypstar_data,
+                                                                    delVZA = c(0),
+                                                                    print_polar = T,
+                                                                    width_polar_plot = 19,
+                                                                    height_polar_plot = 9,
+                                                                    plot_font_size_polar_plot = 18,
+                                                                    title_font_size_polar_plot = 12,
+                                                                    table_font_size_polar_plot = 10,
+                                                                    point_size_polar_plot = 6,
+                                                                    maximum_rmse_polar_plot = 0.3)
+    }else if(summary_type == "average"){
+      matchup_result_to_PRISMA <- matchup_function(sat_data = PRISMA_data,
+                                                  hypstar_data = hypstar_data,
+                                                  time_or_sun_angle = T,
+                                                  just_closest_time_or_sun_angle = T,
+                                                  just_closest_view_angle = F,
+                                                  range_view_angle = 360,
+                                                  delVZA = c(0),
+                                                  weighted_mean = F,
+                                                  print_polar = T,
+                                                  width_polar_plot = 10,
+                                                  height_polar_plot = 9,
+                                                  plot_font_size_polar_plot = 18,
+                                                  title_font_size_polar_plot = 12,
+                                                  point_size_polar_plot = 6,
+                                                  maximum_rmse_polar_plot = 0.3)
+    }else{
+      stop("Wrong summary type")
+    }
     
-    PRISMA_ribbon_plots <- plot_ribbon(matchup_result_to_PRISMA_v2[[1]])
-    PRISMA_rainbow_plots <- plot_rainbow(matchup_result_to_PRISMA_v2[[1]])
-    PRISMA_errors_plots <- plot_relative_errors(matchup_result_to_PRISMA_v2[[1]])
-    PRISMA_polar_plots <- matchup_result_to_PRISMA_v2[[2]]
+    if(is.null(matchup_result_to_PRISMA[[1]])){
+      PRISMA_ribbon_plots <- NULL
+      PRISMA_rainbow_plots <- NULL
+      PRISMA_errors_plots <- NULL
+      PRISMA_polar_plots <- NULL
+    }else{
+      PRISMA_ribbon_plots <- plot_ribbon(matchup_result_to_PRISMA[[1]], title_font_size = 14, line_size = 1, plot_font_size = 18)
+      PRISMA_rainbow_plots <- plot_rainbow(matchup_result_to_PRISMA[[1]], title_font_size = 14, point_size = 6, plot_font_size = 18)
+      PRISMA_errors_plots <- plot_relative_errors(matchup_result_to_PRISMA[[1]], title_font_size = 14, point_size = 6, plot_font_size = 18)
+      PRISMA_polar_plots <- matchup_result_to_PRISMA[[2]]
+    }
   }else{
     PRISMA_ribbon_plots <- NULL
     PRISMA_rainbow_plots <- NULL
@@ -2359,14 +2451,51 @@ create_summary <- function(date_start,
   
   if(!is.null(EnMAP_data)  & !is.null(hypstar_data)){
     print("Start matchups with EnMAP data")
-    matchup_result_to_EnMAP_v2 <- matchup_function_best_geometry(sat_data = EnMAP_data,
+    if(summary_type == "bestconfig"){
+    matchup_result_to_EnMAP <- matchup_function_best_geometry(sat_data = EnMAP_data,
                                                       hypstar_data = hypstar_data,
                                                       delVZA = c(0),
-                                                      print_polar = T)
-    EnMAP_ribbon_plots <- plot_ribbon(matchup_result_to_EnMAP_v2[[1]])
-    EnMAP_rainbow_plots <- plot_rainbow(matchup_result_to_EnMAP_v2[[1]])
-    EnMAP_errors_plots <- plot_relative_errors(matchup_result_to_EnMAP_v2[[1]])
-    EnMAP_polar_plots <- matchup_result_to_EnMAP_v2[[2]]
+                                                      print_polar = T,
+                                                      width_polar_plot = 19,
+                                                      height_polar_plot = 9,
+                                                      plot_font_size_polar_plot = 18,
+                                                      title_font_size_polar_plot = 12,
+                                                      table_font_size_polar_plot = 10,
+                                                      point_size_polar_plot = 6,
+                                                      maximum_rmse_polar_plot = 0.3)
+    }else if(summary_type == "average"){
+      matchup_result_to_EnMAP <- matchup_function(sat_data = EnMAP_data,
+                                                      hypstar_data = hypstar_data,
+                                                      time_or_sun_angle = T,
+                                                      just_closest_time_or_sun_angle = T,
+                                                      just_closest_view_angle = F,
+                                                      range_view_angle = 360,
+                                                      delVZA = c(0),
+                                                      weighted_mean = F,
+                                                      print_polar = T,
+                                                     width_polar_plot = 10,
+                                                     height_polar_plot = 9,
+                                                     plot_font_size_polar_plot = 18,
+                                                     title_font_size_polar_plot = 12,
+                                                     point_size_polar_plot = 6,
+                                                     maximum_rmse_polar_plot = 0.3)
+    }else{
+      stop("Wrong summary type")
+    }
+    
+    if(is.null(matchup_result_to_EnMAP[[1]])){
+      EnMAP_ribbon_plots <- NULL
+      EnMAP_rainbow_plots <- NULL
+      EnMAP_errors_plots <- NULL
+      EnMAP_polar_plots <- NULL
+    }else{
+      EnMAP_ribbon_plots <- plot_ribbon(matchup_result_to_EnMAP[[1]], title_font_size = 14, line_size = 1, plot_font_size = 18)
+      EnMAP_rainbow_plots <- plot_rainbow(matchup_result_to_EnMAP[[1]], title_font_size = 14, point_size = 6, plot_font_size = 18)
+      EnMAP_errors_plots <- plot_relative_errors(matchup_result_to_EnMAP[[1]], title_font_size = 14, point_size = 6, plot_font_size = 18)
+      EnMAP_polar_plots <- matchup_result_to_EnMAP[[2]]
+    }
+    
+    
   }else{
     EnMAP_ribbon_plots <- NULL
     EnMAP_rainbow_plots <- NULL
@@ -2376,6 +2505,8 @@ create_summary <- function(date_start,
 
   if(is.null(filename)){
     pdf_name <- paste0(output_summary_folder,
+                       "HYP",hypstar_level,"_",
+                       summary_type,"_",
                        date_start,"_",
                        date_end,".pdf")
   }else{
@@ -2413,31 +2544,42 @@ create_summary <- function(date_start,
 create_week_summary <- function(week,
                                 year,
                                 repo_root_path_prs,
-                                output_summary_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/summary/"){
+                                output_summary_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/summary/",
+                                hypstar_level,
+                                summary_type){
   start_date <- as.Date(paste0(year,"-01-01")) + lubridate::weeks(week-1)
   end_date <- as.Date(paste0(year,"-01-01")) + lubridate::weeks(week) - 1
   
   create_summary(date_start = start_date,
                  date_end = end_date,
                  repo_root_path_prs = repo_root_path_prs,
-                 filename = paste0(year,"w",sprintf("%02d", week),"_start_",start_date,"_end_",end_date),
-                 output_summary_folder = output_summary_folder)
+                 filename = paste0(year,"w",sprintf("%02d", week),"_start_",start_date,"_end_",end_date,"_HYP",hypstar_level,"_",summary_type),
+                 output_summary_folder = output_summary_folder,
+                 hypstar_level = hypstar_level,
+                 summary_type = summary_type)
 }
 
 #generate_all_missing_summaries ----
-generate_all_missing_summaries <- function(hypstar_home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
+generate_all_missing_summaries <- function(hypstar_home_path_l2a = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
+                                           hypstar_home_path_l2b = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED_L2B",
                                            output_summary_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/summary/",
-                                           repo_root_path_prs){
+                                           repo_root_path_prs,
+                                           hypstar_level,
+                                           summary_type){
   
-  full_list <- data.table::data.table(folder_name = list.dirs(hypstar_home_path, recursive = FALSE, full.names = FALSE))
-    
-  folder_list  <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
-                                                   time = substr(folder_name, 12, 20)) |>
-    tidytable::pull(date) |>
-    unique()
+  if(hypstar_level == "L2A"){
+    full_list <- data.table::data.table(folder_name = list.dirs(hypstar_home_path_l2a, recursive = FALSE, full.names = FALSE))|> 
+      tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
+                        time = substr(folder_name, 12, 20))
+  }else if(hypstar_level == "L2B"){
+    full_list <- data.table::data.table(folder_name = list.files(hypstar_home_path_l2b, recursive = FALSE, full.names = F, pattern = "L2B_REF")) |>
+      tidytable::mutate(date = as.Date(substr(basename(folder_name),26,33),format = "%Y%m%d"),
+                        time = paste0("T",substr(basename(folder_name),35,38),"00")) 
+  }else{
+    stop("Wrong hypstar level")
+  }
   
-  list_of_files_to_be <- full_list |> tidytable::mutate(date = as.Date(substr(folder_name, 4, 11), format = "%Y%m%d"),
-                                                 time = substr(folder_name, 12, 20)) |>
+  list_of_files_to_be <- full_list |>
     tidytable::mutate(year = lubridate::year(date),
                       week = lubridate::week(date)) |>
     tidytable::select(year,week) |>
@@ -2445,7 +2587,7 @@ generate_all_missing_summaries <- function(hypstar_home_path = "//10.0.1.243/pro
     tidytable::mutate(name = paste0(year,"w",sprintf("%02d", week))) 
   
   #remove also the current week so that we wait until it has ended before doing the week summary
-  list_of_generated_summaries <- c(substring(list.files(path = output_summary_folder), 1, 7), paste0(lubridate::year(Sys.Date()),"w",lubridate::week(Sys.Date())))
+  list_of_generated_summaries <- c(substring(list.files(path = output_summary_folder, pattern = paste0("HYP",hypstar_level,"_",summary_type)), 1, 7), paste0(lubridate::year(Sys.Date()),"w",lubridate::week(Sys.Date())))
   
   list_of_missing_summaries <- list_of_files_to_be |>
     tidytable::filter(!(name %in% list_of_generated_summaries)) 
@@ -2454,7 +2596,9 @@ generate_all_missing_summaries <- function(hypstar_home_path = "//10.0.1.243/pro
     create_week_summary(week = list_of_missing_summaries[i]$week,
                         year = list_of_missing_summaries[i]$year,
                         repo_root_path_prs = repo_root_path_prs,
-                        output_summary_folder = output_summary_folder) 
+                        output_summary_folder = output_summary_folder,
+                        hypstar_level = hypstar_level,
+                        summary_type = summary_type) 
   }
   
 }

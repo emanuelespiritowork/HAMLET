@@ -13,5 +13,7 @@ repo_root_path_prs = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_a
 
 #automatically generate missing summaries
 generate_all_missing_summaries(output_summary_folder = output_summary_folder,
-                               repo_root_path_prs = repo_root_path_prs)
+                               repo_root_path_prs = repo_root_path_prs,
+                               hypstar_level = "L2B",
+                               summary_type = "bestconfig")
 
