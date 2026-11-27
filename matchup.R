@@ -866,9 +866,10 @@ matchup_function <- function(sat_data,
                              weighted_mean = F, #if we want a weighted mean (T) or a simple mean (F)
                              width_polar_plot = 10,
                              height_polar_plot = 9,
-                             plot_font_size_polar_plot = 18,
-                             title_font_size_polar_plot = 14,
-                             point_size_polar_plot = 3
+                             plot_font_size_polar_plot = 12,
+                             title_font_size_polar_plot = 4.5,
+                             point_size_polar_plot = 2.5,
+                             maximum_rmse_polar_plot = 0.3
 ){
   
   #to remove specific sensor view angles
@@ -945,7 +946,7 @@ matchup_function <- function(sat_data,
     list_of_datasets_per_time <- lapply(groups, divide_by_time, df = order_time_and_date)
     list_of_polar_plots <- lapply(list_of_datasets_per_time, plot_polar, width = width_polar_plot, height = height_polar_plot,
                                   plot_font_size = plot_font_size_polar_plot, title_font_size = title_font_size_polar_plot,
-                                  point_size = point_size_polar_plot)
+                                  point_size = point_size_polar_plot, maximum_rmse = maximum_rmse_polar_plot)
   }else{
     list_of_polar_plots = NULL
   }
@@ -966,7 +967,7 @@ matchup_function <- function(sat_data,
   }
   
   
-  return(view_angle_output)
+  return(list(view_angle_output,list_of_polar_plots))
   
 }
 
@@ -985,8 +986,8 @@ check_data_types <- function(date_output){
     tidytable::mutate(SZA_hyp = as.numeric(SZA_hyp))
 }
 
-#matchup_function_v2 ----
-matchup_function_v2 <- function(sat_data, 
+#matchup_function_best_geometry ----
+matchup_function_best_geometry <- function(sat_data, 
                              hypstar_data,
                              delVZA = c(""), #vector deleting View Zenith Angle inside hypstar dataset
                              delVAA = c(""), #vector deleting View Azimuth Angle inside hypstar datasets
@@ -995,7 +996,13 @@ matchup_function_v2 <- function(sat_data,
                              
                              filename = NULL, #a custom name for file to save, otherwise it will be given a standard file name
                              output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/csv/", #where to save output of matchup (and polar plot)
-                             print_polar = F # if we want to save in the output_directory a polar plot (T) or not (F)
+                             print_polar = F, # if we want to save in the output_directory a polar plot (T) or not (F)
+                             width_polar_plot = 19,
+                             height_polar_plot = 9,
+                             plot_font_size_polar_plot = 12,
+                             title_font_size_polar_plot = 4.5,
+                             point_size_polar_plot = 2,
+                             maximum_rmse_polar_plot = 0.3
 ){
   
   #to remove specific sensor view angles
@@ -1046,10 +1053,10 @@ matchup_function_v2 <- function(sat_data,
   #GEOMETRY PROBLEM
   geometry_output <- elemental_matchup(date_output = date_output)  |>
     tidytable::mutate(delVZA = paste(delVZA,collapse = "_")) |>
-    tidytable::mutate(delVAA = paste(delVAA,collapse = "_"))
+    tidytable::mutate(delVAA = paste(delVAA,collapse = "_")) 
   
   selected_geometry <- geometry_output |>
-    tidytable::filter(best_geometry_1) |>  
+    tidytable::filter(best_geometry_3) |>  
     tidytable::select(-any_of(c("RA_diff","rel_azimuth_sat","rel_azimuth_hyp",
                                 "RA_sat","RA_hyp",
                                 "PI_sat","PI_hyp",
@@ -1074,7 +1081,12 @@ matchup_function_v2 <- function(sat_data,
                tidytable::filter(r == group))
     }
     list_of_datasets_per_time <- lapply(groups, divide_by_time, df = order_time_and_date)
-    list_of_polar_plots <- lapply(list_of_datasets_per_time, plot_polar_for_elemental)
+    list_of_polar_plots <- lapply(list_of_datasets_per_time, plot_polar_for_elemental, width = width_polar_plot,
+                                  height = height_polar_plot,
+                                  plot_font_size = plot_font_size_polar_plot,
+                                  title_font_size = title_font_size_polar_plot,
+                                  point_size = point_size_polar_plot,
+                                  maximum_rmse = maximum_rmse_polar_plot)
   }else{
     list_of_polar_plots = NULL
   }
@@ -1104,10 +1116,12 @@ elemental_matchup <- function(date_output){
     # plane_inclination = acos(abs(tan(a*pi/180))/sqrt(1+tan(a*pi/180)^2+((tan(a*pi/180)-tan(b*pi/180)*cos(c*pi/180))/(tan(b*pi/180)*sin(c*pi/180)))^2))*180/pi
     tidytable::mutate(PI_sat = acos(abs((tan(SZA_sat*pi/180)-tan(VZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180))/(tan(VZA_sat*pi/180)*sin(rel_azimuth_sat*pi/180)))/sqrt(1+tan(SZA_sat*pi/180)^2+((tan(SZA_sat*pi/180)-tan(VZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180))/(tan(VZA_sat*pi/180)*sin(rel_azimuth_sat*pi/180)))^2))*180/pi ) |>
     tidytable::mutate(PI_hyp = acos(abs((tan(SZA_hyp*pi/180)-tan(VZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180))/(tan(VZA_hyp*pi/180)*sin(rel_azimuth_hyp*pi/180)))/sqrt(1+tan(SZA_hyp*pi/180)^2+((tan(SZA_hyp*pi/180)-tan(VZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180))/(tan(VZA_hyp*pi/180)*sin(rel_azimuth_hyp*pi/180)))^2))*180/pi ) |>
-    #vecchio angolo di inclinazione tra il piano di scattering e il piano orizzontale
-    # tidytable::mutate(PI_sat = acos(abs(tan(VZA_sat*pi/180))/sqrt(1+tan(VZA_sat*pi/180)^2+((tan(VZA_sat*pi/180)-tan(SZA_sat*pi/180)*cos(rel_azimuth_sat*pi/180))/(tan(SZA_sat*pi/180)*sin(rel_azimuth_sat*pi/180)))^2))*180/pi ) |>
-    # tidytable::mutate(PI_hyp = acos(abs(tan(VZA_hyp*pi/180))/sqrt(1+tan(VZA_hyp*pi/180)^2+((tan(VZA_hyp*pi/180)-tan(SZA_hyp*pi/180)*cos(rel_azimuth_hyp*pi/180))/(tan(SZA_hyp*pi/180)*sin(rel_azimuth_hyp*pi/180)))^2))*180/pi ) |>
-    # tidytable::group_by(time_hyp, VZA_hyp, VAA_hyp) |>
+    #in case relative azimuth angle is zero, the configuration is redundant in plane inclination
+    #for three points on a line there are infinite planes. 
+    #in case the computation of PI_hyp is NA we put PI_hyp = PI_sat 
+    #it is still possible for PI_sat to be NA but it is very unlikely since for satellites the angle are computed 
+    #with decimal digits 
+    tidytable::mutate(PI_hyp = tidytable::if_else(is.na(PI_hyp),PI_sat,PI_hyp)) |>
     tidytable::mutate(SE_sat = 90-SZA_sat) |>
     tidytable::mutate(SE_hyp = 90-SZA_hyp) |>
     tidytable::mutate(RA_diff = abs(RA_sat-RA_hyp)) |>
@@ -1124,13 +1138,8 @@ elemental_matchup <- function(date_output){
     tidytable::mutate(best_geometry_2 = average_RA_PI_diff == min(average_RA_PI_diff)) |>
     tidytable::mutate(best_geometry_3 = average_RA_PI_SE_diff == min(average_RA_PI_SE_diff)) |>
     tidytable::ungroup() |>
-    tidytable::mutate(operations = ":elemental:elemental:elemental:elemental") |>
-    #in case relative azimuth angle is zero, the configuration is redundant in plane inclination
-    #for three points on a line there are infinite planes. So we cannot use it and it will be false
-    #by default
-    tidytable::mutate(best_geometry_2 = tidytable::if_else(is.na(best_geometry_2),FALSE,best_geometry_2)) |>
-    tidytable::mutate(best_geometry_3 = tidytable::if_else(is.na(best_geometry_3),FALSE,best_geometry_3))
-    
+    tidytable::mutate(operations = ":elemental:elemental:elemental:elemental") 
+  
   return(filter_best_config)
   
   #la divisione in relative_angle e plane_inclination è motivata dalla seguente considerazione
@@ -1661,10 +1670,12 @@ plot_ribbon <- function(matchup_result,
                         filename = NULL,
                         ylimits = c(0,0.75),
                         xlimits = c(300,1700),
-                        width = 10,
-                        height = 3.5,
-                        plot_font_size = 15,
-                        title_font_size = 11){
+                        height = 9, 
+                        width = 10, 
+                        plot_font_size = 14, 
+                        title_font_size = 3.5,
+                        point_size = 1,
+                        line_size = 1){
   # library(ggplot2)
   
   sat_name <- unique(substr(matchup_result$sensor,1,2))
@@ -1685,8 +1696,8 @@ plot_ribbon <- function(matchup_result,
     number_of_bands <- length(unique(matchup_result$band))
     if(number_of_bands > 50){
       plot <- ggplot(data = data_plot) + 
-        geom_line(aes(x = wvl, y = Ref_sat), linewidth = 1, color = sat_color) +
-        geom_line(aes(x = wvl, y = Ref_hyp), linewidth = 1, color = color_station) +
+        geom_line(aes(x = wvl, y = Ref_sat), linewidth = line_size, color = sat_color) +
+        geom_line(aes(x = wvl, y = Ref_hyp), linewidth = line_size, color = color_station) +
         geom_ribbon(aes(x = wvl, y = Ref_sat, ymin = Ref_sat - sd_sat, ymax = Ref_sat + sd_sat), alpha = alpha, fill = sat_color) +
         geom_ribbon(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, fill = color_station) +
         ggtitle(title) +
@@ -1698,8 +1709,8 @@ plot_ribbon <- function(matchup_result,
         theme(plot.title = element_text(size=title_font_size))
     }else{
       plot <- ggplot(data = data_plot) + 
-        geom_point(aes(x = wvl, y = Ref_sat), linewidth = 1, color = sat_color) +
-        geom_point(aes(x = wvl, y = Ref_hyp), linewidth = 1, color = color_station) +
+        geom_point(aes(x = wvl, y = Ref_sat), linewidth = point_size, color = sat_color) +
+        geom_point(aes(x = wvl, y = Ref_hyp), linewidth = point_size, color = color_station) +
         geom_errorbar(aes(x = wvl, y = Ref_sat, ymin = Ref_sat - sd_sat, ymax = Ref_sat + sd_sat), alpha = alpha, color = sat_color) +
         geom_errorbar(aes(x = wvl, y = Ref_hyp, ymin = Ref_hyp - std_hyp, ymax = Ref_hyp + std_hyp), alpha = alpha, color = color_station) +
         ggtitle(title) +
@@ -1766,10 +1777,11 @@ plot_rainbow <- function(matchup_result,
                          ylimits = c(0,0.75),
                          zlimits = c(300,1700),
                          filename = NULL,
-                         height = 5,
-                         width = 13,
-                         plot_font_size = 15,
-                         title_font_size = 11){
+                         height = 9, 
+                         width = 10, 
+                         plot_font_size = 14, 
+                         title_font_size = 3.5,
+                         legend_font_size = 11){
   # library(ggplot2)
   palette <- c(rev(rainbow(8)[-length(rainbow(8))]),"#bbbbbb","#777777","#444444","#000000")
   values_palette <- scales::rescale(x = c(350,400,450,500,550,600,650,700,1000,1300,1800),
@@ -1800,7 +1812,7 @@ plot_rainbow <- function(matchup_result,
       # xlim(0,0.6) +
       theme_classic(base_size = plot_font_size)+
       theme(aspect.ratio = 1, plot.title = element_text(size=title_font_size), legend.position = "right",
-            legend.text = element_text(size =title_font_size), legend.title = element_text(size = title_font_size))
+            legend.text = element_text(size =legend_font_size), legend.title = element_text(size = legend_font_size))
     
     if(is.null(filename)){
       filename <- paste0("rainbow_",title)
@@ -1850,10 +1862,11 @@ plot_relative_errors <- function(matchup_result,
                                  xlimits = c(300,1700),
                                  output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                                  filename = NULL,
-                                 plot_font_size = 15,
-                                 title_font_size = 11,
-                                 height = 5,
-                                 width = 13){
+                                 height = 9, 
+                                 width = 10, 
+                                 plot_font_size = 14, 
+                                 title_font_size = 3.5, 
+                                 legend_font_size = 11){
   relative_error_df <- matchup_result |> tidytable::mutate(relative_error = (Ref_sat-Ref_hyp)/ Ref_hyp *100) 
   # library(ggplot2)
   
@@ -1882,7 +1895,7 @@ plot_relative_errors <- function(matchup_result,
       xlab("Wavelengths [nm]")+
       theme_classic(base_size = plot_font_size)+
       theme(plot.title = element_text(size=title_font_size), legend.position = "bottom",
-            legend.text = element_text(size =title_font_size))
+            legend.text = element_text(size =legend_font_size), legend.title = element_text(size = legend_font_size))
     
     if(is.null(filename)){
       filename <- paste0("relative_error_",title)
@@ -1978,11 +1991,12 @@ save_function <- function(view_angle_output, filename, output_directory){
 plot_polar <- function(time_or_sun_angle_output,
                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                        filename = NULL,
-                       plot_font_size = 11,
-                       title_font_size = 14,
-                       point_size = 5,
-                       width = 19,
-                       height = 9){
+                       plot_font_size = 12,
+                       title_font_size = 4.5,
+                       point_size = 2.5,
+                       width = 10,
+                       height = 9,
+                       maximum_rmse = 0.3){
   geom_coord <- time_or_sun_angle_output |> tidytable::group_by(VZA_hyp, VAA_hyp, SAA_hyp, SZA_hyp) |>
     tidytable::filter(wvl < 1350 | wvl > 1500) |> #filter the atmospheric window
     tidytable::mutate(rmse = Metrics::rmse(Ref_hyp,Ref_sat)) |>
@@ -1994,9 +2008,9 @@ plot_polar <- function(time_or_sun_angle_output,
     geom_point(data = geom_coord, aes(x = VAA_hyp, y = VZA_hyp, color = rmse),
                size = point_size) +
     scale_color_gradientn(colours = c('#44ce1b', '#bbdb44', '#f2a134', '#e51f1f'),
-                          values = scales::rescale(x = c(0,0.1,0.2,0.3),
+                          values = scales::rescale(x = c(0,maximum_rmse/3,maximum_rmse/3*2,maximum_rmse),
                                                    to = c(0,1)),
-                          limits = c(0,0.3))+
+                          limits = c(0,maximum_rmse))+
     geom_text(data = geom_coord, aes(x = SAA_sat, y = SZA_sat),
               color = "darkgrey",
               size = point_size,
@@ -2040,10 +2054,12 @@ plot_polar <- function(time_or_sun_angle_output,
 plot_polar_for_elemental <- function(geometry_output,
                        output_directory = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/plots/",
                        filename = NULL,
-                       plot_font_size = 15,
-                       title_font_size = 11,
+                       plot_font_size = 12,
+                       title_font_size = 4.5,
+                       point_size = 2,
                        width = 19,
-                       height = 9){
+                       height = 9,
+                       maximum_rmse = 0.3){
   geom_coord <- geometry_output |> tidytable::group_by(VZA_hyp, VAA_hyp, SAA_hyp, SZA_hyp) |>
     tidytable::filter(wvl < 1350 | wvl > 1500) |> #filter the atmospheric window
     tidytable::mutate(rmse = Metrics::rmse(Ref_hyp,Ref_sat)) |>
@@ -2054,60 +2070,60 @@ plot_polar_for_elemental <- function(geometry_output,
   library(ggplot2)
   plot <- ggplot() +
     geom_point(data = geom_coord, aes(x = VAA_hyp, y = VZA_hyp, color = rmse),
-               size = 3) +
+               size = point_size) +
     geom_text(data = geom_coord, aes(x = VAA_hyp, y = VZA_hyp, label = point_number),
-              size = 5, hjust = 0, vjust = 0) +
+              size = point_size/2, hjust = 0, vjust = 0) +
     geom_text(data = geom_coord, aes(x = SAA_sat, y = SZA_sat),
               color = "darkgrey",
-              size = 5,
+              size = point_size,
               label = "☼") +
     geom_text(data = geom_coord |>
                 tidytable::summarise(tidytable::across(.cols = c("SAA_hyp","SZA_hyp"),
                                                        .fns = mean)), 
               aes(x = SAA_hyp, y = SZA_hyp),
               color = "black",
-              size = 5,
+              size = point_size,
               label = "☼") +
     geom_text(data = geom_coord, aes(x = VAA_sat, y = VZA_sat),
               color = "darkgrey",
-              size = 5,
+              size = point_size,
               label = "X") +
     coord_radial(theta = "x", start = -pi*15/180, thetalim = c(0,330), inner.radius = 0.1,
                  r.axis.inside = T) +
     ylab("VZA [rad]") +
     xlab("VAA [rad]") +
     scale_color_gradientn(colours = c('#44ce1b', '#bbdb44', '#f2a134', '#e51f1f'),
-                          values = scales::rescale(x = c(0,0.1,0.2,0.3),
+                          values = scales::rescale(x = c(0,maximum_rmse/3,maximum_rmse/3*2,maximum_rmse),
                                                    to = c(0,1)),
-                          limits = c(0,0.3))+
+                          limits = c(0,maximum_rmse))+
     scale_x_continuous(
       limits = c(0, 360),
       breaks = seq(0, 330, by = 30),
       minor_breaks = NULL
     )+
     theme_classic(base_size = plot_font_size)+
-    theme(plot.subtitle = element_text(size=title_font_size))+
-    ggtitle(label = "polar_plot", subtitle = paste0(make_title_for_polar_plots_elemental(geom_coord),"_VZA_sat_",round(unique(geom_coord$VZA_sat),0),"_VAA_sat_",round(unique(geom_coord$VAA_sat),0),"_RA_sat_",round(unique(geom_coord$RA_sat),0),"_plane_inc_sat_",round(unique(geom_coord$PI_sat),0)))
+    theme(plot.title = element_text(size=title_font_size))+
+    ggtitle(label = paste0(make_title_for_polar_plots_elemental(geom_coord),"_VZA_sat_",round(unique(geom_coord$VZA_sat),0),"_VAA_sat_",round(unique(geom_coord$VAA_sat),0),"_RA_sat_",round(unique(geom_coord$RA_sat),0),"_plane_inc_sat_",round(unique(geom_coord$PI_sat),0)))
   
   table <- geom_coord |> tidytable::select(RA_hyp, RA_diff, 
                                            PI_hyp, PI_diff, 
                                            SE_hyp, SE_diff,
                                            average_RA_PI_diff, average_RA_PI_SE_diff,
-                                           rmse) |> 
+                                           rmse) |>
+    tidytable::rename(av_RA_PI_diff = average_RA_PI_diff, av_RA_PI_SE_diff = average_RA_PI_SE_diff) |>
     tidytable::mutate(tidytable::across(.cols = everything(), ~round(.x,2)))
   
-  table_to_plot <- ggpubr::table_cell_font(
-    ggpubr::table_cell_font(
-    ggpubr::table_cell_font(tab = ggpubr::ggtexttable(table), row = 1, column = 9, color = "#0000FF"),
-    row = 1, column = 3, color = "#B300FF"),
-    row = 1, column = 8, color = "brown")
+  table_to_plot <- ggpubr::ggtexttable(table, theme = ggpubr::ttheme(base_size = 4, padding = unit(c(2,2), "mm"))) |>
+    ggpubr::table_cell_font(row = 1, column = 9, color = "#0000FF", size = 4) |>
+    ggpubr::table_cell_font(row = 1, column = 3, color = "#B300FF", size = 4) |>
+    ggpubr::table_cell_font(row = 1, column = 8, color = "brown", size = 4)
     
   if(sum(geom_coord$best_geometry_1) == 1){
     plot <- plot + 
       geom_point(data = geom_coord |> tidytable::filter(best_geometry_1) |> tidytable::select(VAA_hyp,VZA_hyp) |> unique(),
                  aes(x = VAA_hyp, y = VZA_hyp),
                  color = "#B300FF",
-                 size = 5,
+                 size = point_size,
                  shape = 1) 
   }
   
@@ -2116,7 +2132,7 @@ plot_polar_for_elemental <- function(geometry_output,
       geom_point(data = geom_coord |> tidytable::filter(best_geometry_2) |> tidytable::select(VAA_hyp,VZA_hyp) |> unique(), 
                  aes(x = VAA_hyp, y = VZA_hyp),
                  color = "brown",
-                 size = 10,
+                 size = point_size+2,
                  shape = 1)
   }
   
@@ -2125,7 +2141,7 @@ plot_polar_for_elemental <- function(geometry_output,
       geom_point(data = geom_coord |> tidytable::filter(best_geometry_3) |> tidytable::select(VAA_hyp,VZA_hyp) |> unique(), 
                  aes(x = VAA_hyp, y = VZA_hyp),
                  color = "#0000FF",
-                 size = 15,
+                 size = point_size+4,
                  shape = 1)
   }
   
@@ -2298,7 +2314,7 @@ create_summary <- function(date_start,
   
   if(!is.null(s2_data) & !is.null(hypstar_data)){
     print("Start matchups with S2 data")
-    matchup_result_to_S2_v2 <- matchup_function_v2(sat_data = s2_data,
+    matchup_result_to_S2_v2 <- matchup_function_best_geometry(sat_data = s2_data,
                                                    hypstar_data = hypstar_data,
                                                    delVZA = c(0),
                                                    print_polar = T)
@@ -2321,7 +2337,7 @@ create_summary <- function(date_start,
   
   if(!is.null(PRISMA_data)  & !is.null(hypstar_data)){
     print("Start matchups with PRISMA data")
-    matchup_result_to_PRISMA_v2 <- matchup_function_v2(sat_data = PRISMA_data,
+    matchup_result_to_PRISMA_v2 <- matchup_function_best_geometry(sat_data = PRISMA_data,
                                                        hypstar_data = hypstar_data,
                                                        delVZA = c(0),
                                                        print_polar = T)
@@ -2343,7 +2359,7 @@ create_summary <- function(date_start,
   
   if(!is.null(EnMAP_data)  & !is.null(hypstar_data)){
     print("Start matchups with EnMAP data")
-    matchup_result_to_EnMAP_v2 <- matchup_function_v2(sat_data = EnMAP_data,
+    matchup_result_to_EnMAP_v2 <- matchup_function_best_geometry(sat_data = EnMAP_data,
                                                       hypstar_data = hypstar_data,
                                                       delVZA = c(0),
                                                       print_polar = T)
@@ -2408,6 +2424,7 @@ create_week_summary <- function(week,
                  output_summary_folder = output_summary_folder)
 }
 
+#generate_all_missing_summaries ----
 generate_all_missing_summaries <- function(hypstar_home_path = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
                                            output_summary_folder = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Results/summary/",
                                            repo_root_path_prs){
@@ -2442,6 +2459,7 @@ generate_all_missing_summaries <- function(hypstar_home_path = "//10.0.1.243/pro
   
 }
 
+#create_timeline_for_hyper ----
 create_timeline_for_hyper <- function(repo_root_path_prs = "//10.0.1.243/nr_data/3_rs_data/PRISMA/JDS/put_PRISMA_he5_and_S2_tif_here_L2/",
                                       repo_root_path_enm = "//10.0.1.243/nr_data/3_rs_data/EnMAP/JDS/"){
   #enmap descriptors
@@ -2459,6 +2477,7 @@ create_timeline_for_hyper <- function(repo_root_path_prs = "//10.0.1.243/nr_data
   return(prisma_db |> tidytable::bind_rows(enmap_db) |> tidytable::filter(date > "2024-01-01"))
 }
 
+#create_timeline_for_multi ----
 create_timeline_for_multi <- function(repo_root_path_s2 = "//10.0.1.243/Repository/nr_products/sentinel2/l2/T32TQQ/"){
   years <- 2024:lubridate::year(Sys.time())
   s2_acquisitions <- as.Date(substring(list.dirs(paste0(repo_root_path_s2,years), recursive = F, full.names = F),
@@ -2494,6 +2513,7 @@ create_timeline_for_multi <- function(repo_root_path_s2 = "//10.0.1.243/Reposito
   return(valid_acquisitions)
 }
 
+#create_timeline_for_hypstar ----
 create_timeline_for_hypstar <- function(hypstar_home_path_l2a = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED",
                                         hypstar_home_path_l2b = "//10.0.1.243/projects/2023_HyperNet-POP/3-DATA/PROCESSED_L2B",
                                         level){
@@ -2526,6 +2546,7 @@ create_timeline_for_hypstar <- function(hypstar_home_path_l2a = "//10.0.1.243/pr
   return(hypstar_db)
 }
 
+#create_timeline ----
 create_timeline <- function(timeline_repo = "//10.0.1.243/nr_working/emanuele/Progetto_JSIT/Timelines/csv",
                             plot_size = 14){
   planning <- tidytable::fread(paste0(timeline_repo,"/field_planning.csv")) |>
